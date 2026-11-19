@@ -53,7 +53,8 @@ def prepare_data(args, output):
 
 def work(execution, args):
     data, rows, evidence = prepare_data(args, execution.output)
-    root, versions = verify_aisbench()
+    root, versions = verify_aisbench(execution.log)
+    execution.result["metadata"].update(versions)
     tokenizer, tokenizer_files = tokenizer_info(input_path(args.model_path, directory=True))
     if args.thinking != "default" and "enable_thinking" not in str(tokenizer.chat_template):
         raise Failure("本地 chat_template 不支持 enable_thinking", "unsupported_backend")

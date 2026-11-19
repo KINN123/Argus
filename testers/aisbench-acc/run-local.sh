@@ -13,6 +13,6 @@ exec docker run --rm --init --read-only --user "$(id -u):$(id -g)" \
   --tmpfs /tmp:rw,exec,size=4g --shm-size=1g \
   -v "$OUTPUT_DIR:/workspace/output" \
   -v "$MODEL_DIR:/models/model:ro" -v "$DATA_DIR:/data:ro" \
-  -e ENDPOINT_API_KEY -e METRICS_API_KEY \
-  "${TESTER_IMAGE:-ghcr.io/ucm-system/testplane-tester-aisbench-acc:0.1.0}" \
+  -e ENDPOINT_API_KEY -e METRICS_API_KEY -e TESTPLANE_AISBENCH_CHECK \
+  "${TESTER_IMAGE:-ghcr.io/ucm-system/testplane-tester-aisbench-acc:0.1.1}" \
   --model_path=/models/model "$@"

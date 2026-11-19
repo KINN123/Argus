@@ -7,7 +7,7 @@ COPY build/requirements.txt /tester/build/requirements.txt
 RUN python3 -m pip install --no-cache-dir -r /tester/build/requirements.txt
 COPY . /tester
 RUN chmod 0755 /tester/run.sh /tester/run-local.sh \
- && python3 -c "from runtime import verify_aisbench; verify_aisbench(); from testplane_model import Chat" \
+ && TESTPLANE_AISBENCH_CHECK=strict python3 -c "from runtime import verify_aisbench; verify_aisbench(); from testplane_model import Chat" \
  && mkdir -p /workspace/output /data /models \
  && chown 10001:10001 /workspace/output
 ENV HOME=/tmp \

@@ -13,7 +13,7 @@
 ```bash
 docker build --platform linux/amd64 \
   -f testers/aisbench-perf/build/Dockerfile \
-  -t ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.0 \
+  -t ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.1 \
   testers/aisbench-perf
 
 MODEL_DIR=/absolute/path/to/tokenizer DATA_DIR=/absolute/path/to/data \
@@ -39,6 +39,30 @@ MODEL_DIR=/absolute/path/to/tokenizer DATA_DIR=/absolute/path/to/data \
 两个 JSONL 都需要非空 question，不能同时显式指定 input_len、repeat_rate 或 prefix_num。正式文件的每条请求需要对应的 token 前缀；已有数据不再按 input_len 截断。不要预热时写 `--prefix_test=false` 并省略 warmup_dataset；正常的数据模式可用 `--dataset_type=normal`。
 
 模型凭据用 `ENDPOINT_API_KEY`，指标凭据用 `METRICS_API_KEY`，两者不混用。参数清单和默认值见 [tester.yaml](tester.yaml) 或 `--help`。已有 Linux Python 环境可安装 [build/requirements.txt](build/requirements.txt) 后直接执行 runner.py，通过 TESTPLANE_OUTPUT_DIR 指定输出目录；真实 AISBench 不支持 Windows 原生运行。
+
+### 保留容器里已有的 AISBench 3.1
+
+如果报错是源码哈希不同，可以使用 0.1.1 起提供的兼容模式。从容器内的项目根目录执行：
+
+```bash
+export TESTPLANE_AISBENCH_CHECK=compatible
+
+# 先检查已安装的真实 AISBench，使用本机模拟的模型服务和缓存计数。
+# 无需真实模型、外部数据或 UCM；需要当前环境的 transformers/tokenizers。
+python3 testers/aisbench-perf/tests/real_smoke.py
+
+# 检查通过后运行真实模型；替换下面地址、模型名和容器内路径。
+TESTPLANE_OUTPUT_DIR="/tmp/perf-$(date +%Y%m%d-%H%M%S)-$$" \
+sh testers/aisbench-perf/run.sh \
+  --url=http://model-server:8000/v1 --model_name=served-model \
+  --model_path=/models/model --input_len=256 --output_len=32 \
+  --data_num=16 --concurrency=2 --repeat_rate=50% \
+  --metrics_endpoint=http://prefill-0:8000/metrics
+```
+
+默认值仍是 `strict`。compatible 只放宽 3.1 系列的源码哈希差异，不忽略缺包、缺文件、请求失败和结果格式错误，也不安装或修改 AISBench。模拟服务检查通过后仍需真实 UCM 联调。`run-local.sh` 会透传该变量。
+
+实际版本、检查模式和不匹配文件写入 `result.json` 的 metadata；源码不匹配时 `aisbench_commit` 为 null，提示写入 `logs/runner.log`。缓存计数校验与 `metrics_policy` 保持原有行为。具体约定见 [环境检查设计](../../design/impl/aisbench-environment.md)。
 
 ## 指标怎么看
 
@@ -72,7 +96,7 @@ python -m pip install PyYAML==6.0.2 jsonschema==4.23.0 prometheus-client==0.21.1
 python -m unittest discover -s testers/aisbench-perf/tests -v
 
 docker run --rm --init --read-only --shm-size=1g --tmpfs /tmp:rw,exec,size=4g \
-  --entrypoint python3 ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.0 \
+  --entrypoint python3 ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.1 \
   /tester/tests/real_smoke.py
 ```
 
