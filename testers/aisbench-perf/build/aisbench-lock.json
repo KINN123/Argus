@@ -1,0 +1,21 @@
+{
+  "commit": "525ed1779f50a8ac068b8638771f633a151e769f",
+  "archive_sha256": "18dfc96b3ac9ea4fff740dc7f3173d8aea6aa633cdbb9df317cc37139f393f58",
+  "files": {
+    "cli/argument_parser.py": "af41a99f06ac0877a5a79b2d744cfed0bb7626a2d01c496e998191f90f9bfa04",
+    "cli/config_manager.py": "c0ceec7a307dc761cd35052d202030d78c76b87649478143dbf27a80db2718ce",
+    "registry.py": "7e1ba7cd7b5c42b0358dfb9665892067400f220f1f10d8185533f3e499c3f0ee",
+    "models/api_models/base_api.py": "203a416444b972193274a13e1593328a288b6879a3d62e4f201bbb9adfa81755",
+    "models/api_models/vllm_custom_api_chat.py": "093e1aae05b49647c3dc0fb6ecf6e41812914ac2293874979cc9deaabc60018c",
+    "models/output.py": "ecf7600edf599cae33f8024fac0d2d1b285050110b4a45d7f6c6ec0d03c4836d",
+    "openicl/icl_inferencer/icl_gen_inferencer.py": "9e456230079053fe3ea963763095f52172cce4bd2d3007926349edd922acd5d4",
+    "openicl/icl_inferencer/output_handler/gen_inferencer_output_handler.py": "d5832ed1e192656d1cffbfb483b8466f2da23c99c081d4d332cb53b66586ab38",
+    "tasks/openicl_eval.py": "d1ad523b2fa126f6f741a4308c9823df1003ea87a278f4c4a81cdfd1e5838b0f",
+    "datasets/gsm8k.py": "c5f649b36dd31d7ff92c324b48145a258210e54f6a900d7943629e0525de7ea3",
+    "configs/datasets/gsm8k/gsm8k_gen_4_shot_cot_str.py": "7bcb2a75313a55a5cd1655089c72e8fc7d809fab1b105a5d196004c1e12dbd8a",
+    "configs/datasets/gsm8k/gsm8k_gen_0_shot_cot_str.py": "996108b01105434daf90dc7d2c9be5abbc9d777a5159e4381a02adafa8afa1b9",
+    "summarizers/default_perf.py": "a00183b0a4d1b2ac07ab5e49567ef0a83e39e1f9f4b05816dad666c60d835a5b",
+    "calculators/base_perf_metric_calculator.py": "0f3cc591fe5b00525dd009bffa32d1c2e6cb9c6ac97fc6e25258dc0568579860",
+    "utils/perf_details.py": "8e897c5b2c294fbe734e13c6ed72abc418878441cdfe7c275a94d0ce9869bcf9"
+  }
+}
