@@ -1,0 +1,6 @@
+ais_bench_benchmark @ https://codeload.github.com/AISBench/benchmark/tar.gz/525ed1779f50a8ac068b8638771f633a151e769f#sha256=18dfc96b3ac9ea4fff740dc7f3173d8aea6aa633cdbb9df317cc37139f393f58
+transformers==4.51.3
+datasets==3.6.0
+numpy==1.26.4
+mmengine-lite==0.10.7
+prometheus-client==0.21.1
