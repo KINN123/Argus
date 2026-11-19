@@ -1,11 +1,11 @@
 name: aisbench-acc
-version: 0.1.1
+version: 0.1.2
 display_name: AISBench 精度测试
 description: 使用 GSM8K 做精度评测，保存逐题请求、回答和评分。分数低可成功，漏题或评分不完整会失败。
 role: test
 on_failure: continue
 entry: /tester/run.sh
-image: ghcr.io/ucm-system/testplane-tester-aisbench-acc:0.1.1
+image: ghcr.io/ucm-system/testplane-tester-aisbench-acc:0.1.2
 resources:
   cpu: "4"
   memory: "8Gi"
@@ -85,11 +85,6 @@ parameters:
     default: "1"
     description: "1 或 2；第二轮真正重发请求，结果单独保存。"
 env:
-  TESTPLANE_AISBENCH_CHECK:
-    required: false
-    secret: false
-    default: strict
-    description: "strict 校验固定源码；compatible 允许已有 AISBench 3.1 系列源码差异，仍校验实际结果。"
   ENDPOINT_API_KEY:
     required: false
     secret: true

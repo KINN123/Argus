@@ -125,7 +125,7 @@ class AccuracyTests(unittest.TestCase):
         class Tokenizer:
             chat_template = "mock"
         with patch.dict(os.environ, {"TESTPLANE_OUTPUT_DIR": str(self.path / "output")}), \
-             patch.object(runner, "verify_aisbench", return_value=(self.path, {"aisbench_commit": "fixture"})), \
+             patch.object(runner, "aisbench_info", return_value={"aisbench_version": "fixture"}), \
              patch.object(runner, "tokenizer_info", return_value=(Tokenizer(), {})), \
              patch.object(runner, "official_template", return_value="{question}"), \
              patch.object(runtime.Execution, "run_aisbench", fake_run):

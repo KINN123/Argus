@@ -4,7 +4,7 @@ import re
 
 from runtime import (Failure, Parser, dump, input_path, integer, jsonl, number,
                      official_template, public_args, read_jsonl, run_main,
-                     select_rows, tokenizer_info, verify_aisbench, digest)
+                     select_rows, tokenizer_info, aisbench_info, digest)
 from result_mapper import map_accuracy
 
 
@@ -53,12 +53,12 @@ def prepare_data(args, output):
 
 def work(execution, args):
     data, rows, evidence = prepare_data(args, execution.output)
-    root, versions = verify_aisbench(execution.log)
+    versions = aisbench_info()
     execution.result["metadata"].update(versions)
     tokenizer, tokenizer_files = tokenizer_info(input_path(args.model_path, directory=True))
     if args.thinking != "default" and "enable_thinking" not in str(tokenizer.chat_template):
         raise Failure("本地 chat_template 不支持 enable_thinking", "unsupported_backend")
-    template = official_template(root, args.dataset_config)
+    template = official_template(args.dataset_config)
     execution.result["workload"] = dict(model_name=args.model_name, dataset=args.dataset_config, concurrency=args.concurrency,
                                          output_len=args.output_len)
     metadata = dict(versions, **evidence, tokenizer_files=tokenizer_files,

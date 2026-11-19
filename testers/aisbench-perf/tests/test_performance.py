@@ -148,7 +148,7 @@ class PerformanceTests(unittest.TestCase):
             return 0
         output = self.path / "output"
         with patch.dict(os.environ, {"TESTPLANE_OUTPUT_DIR": str(output)}), \
-             patch.object(runner, "verify_aisbench", return_value=(self.path, {})), \
+             patch.object(runner, "aisbench_info", return_value={}), \
              patch.object(runner, "tokenizer_info", return_value=(CharTokenizer(), {})), \
              patch.object(runner, "capture", side_effect=fake_capture), \
              patch.object(runtime.Execution, "run_aisbench", fake_run):

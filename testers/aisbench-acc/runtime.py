@@ -5,12 +5,10 @@ import argparse
 import ast
 import hashlib
 import importlib.metadata
-import importlib.util
 import json
 import math
 import os
 from pathlib import Path
-import re
 import signal
 import subprocess
 import sys
@@ -18,8 +16,7 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
-VERSION = "0.1.1"
-AISBENCH_COMMIT = "525ed1779f50a8ac068b8638771f633a151e769f"
+VERSION = "0.1.2"
 HERE = Path(__file__).resolve().parent
 MODEL = "testplane-model"
 DATA = "testplane-data"
@@ -197,48 +194,20 @@ def tokenizer_info(path):
     return tokenizer, files
 
 
-def verify_aisbench(log=None):
-    mode = os.environ.get("TESTPLANE_AISBENCH_CHECK", "strict")
-    if mode not in ("strict", "compatible"):
-        raise Failure("TESTPLANE_AISBENCH_CHECK 只能是 strict 或 compatible")
-    try:
-        spec = importlib.util.find_spec("ais_bench.benchmark")
-        if spec is None or not spec.origin:
-            raise ValueError("未找到 ais_bench.benchmark")
-        root = Path(spec.origin).parent
-        version = importlib.metadata.version("ais_bench_benchmark")
-        transformers_version = importlib.metadata.version("transformers")
-    except Exception as exc:
-        raise Failure(f"AISBench 环境不可用（Python: {sys.executable}）：{exc}；请检查当前 Python 环境和依赖",
-                      "unsupported_backend") from exc
-    if mode == "compatible" and not re.match(r"^3\.1(?:$|[.+-]|(?:a|b|rc)\d)", version):
-        raise Failure(f"compatible 模式仅用于 AISBench 3.1 系列，当前版本为 {version}", "unsupported_backend")
-    try:
-        lock = json.loads((HERE / "build/aisbench-lock.json").read_text(encoding="utf-8"))
-        if lock["commit"] != AISBENCH_COMMIT or not isinstance(lock["files"], dict) or not lock["files"]:
-            raise ValueError("AISBench 源码锁内容无效")
-        mismatches = [rel for rel, expected in lock["files"].items() if digest(root / rel) != expected]
-    except Exception as exc:
-        raise Failure(f"AISBench 源码检查失败：{exc}；请检查 Tester 锁文件及 AISBench 安装文件是否完整",
-                      "unsupported_backend") from exc
-    if mismatches:
-        detail = f"AISBench {version} 与固定源码不同：{', '.join(mismatches)}"
-        if mode == "strict":
-            raise Failure(detail + "；请使用 build/requirements.txt 的固定依赖；已有 3.1 环境可设置 "
-                          "TESTPLANE_AISBENCH_CHECK=compatible 后做小规模验证", "unsupported_backend")
-        message = detail + "；compatible 模式继续运行，接口兼容性尚未验证，仍会检查实际结果"
-        if log is None:
-            print(redact(message), flush=True)
-        else:
-            log(message)
-    return root, {"aisbench_commit": None if mismatches else AISBENCH_COMMIT,
-                  "aisbench_expected_commit": AISBENCH_COMMIT, "aisbench_version": version,
-                  "aisbench_check_mode": mode, "aisbench_source_verified": not mismatches,
-                  "aisbench_source_mismatches": mismatches,
-                  "python_version": sys.version.split()[0], "transformers_version": transformers_version}
+def aisbench_info():
+    """Record installed versions without gating execution on environment checks."""
+    versions = {"python_version": sys.version.split()[0]}
+    for field, package in (("aisbench_version", "ais_bench_benchmark"), ("transformers_version", "transformers")):
+        try:
+            versions[field] = importlib.metadata.version(package)
+        except Exception:
+            # Source checkouts or broken distribution metadata must not block a run.
+            versions[field] = None
+    return versions
 
 
-def official_template(root, preset):
+def official_template(preset):
+    root = Path(importlib.import_module("ais_bench.benchmark").__file__).parent
     name = "gsm8k_gen_4_shot_cot_str.py" if preset == "gsm8k_4shot_cot" else "gsm8k_gen_0_shot_cot_str.py"
     source = (root / "configs/datasets/gsm8k" / name).read_text(encoding="utf-8")
     templates = [ast.literal_eval(node.value) for node in ast.walk(ast.parse(source))

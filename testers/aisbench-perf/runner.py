@@ -1,7 +1,7 @@
 """Fixed-load performance with separate warmup and measurement snapshots."""
 import hashlib
 from runtime import (Failure, Parser, boolean, dump, input_path, integer, number,
-                     public_args, run_main, tokenizer_info, validate_url, verify_aisbench)
+                     public_args, run_main, tokenizer_info, validate_url, aisbench_info)
 from dataset_generator import prepare_data
 from prefix_metrics import capture, compare, require_valid, settle
 from result_mapper import map_performance
@@ -61,7 +61,7 @@ def validate(args):
 
 def work(execution, args):
     validate(args)
-    _, versions = verify_aisbench(execution.log)
+    versions = aisbench_info()
     execution.result["metadata"].update(versions)
     tokenizer, tokenizer_files = tokenizer_info(input_path(args.model_path, directory=True))
     rows, warmup, prefix_count, evidence = prepare_data(args, tokenizer, execution.output)
