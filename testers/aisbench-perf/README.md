@@ -13,7 +13,7 @@
 ```bash
 docker build --platform linux/amd64 \
   -f testers/aisbench-perf/build/Dockerfile \
-  -t ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.1 \
+  -t ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.2 \
   testers/aisbench-perf
 
 MODEL_DIR=/absolute/path/to/tokenizer DATA_DIR=/absolute/path/to/data \
@@ -38,20 +38,14 @@ MODEL_DIR=/absolute/path/to/tokenizer DATA_DIR=/absolute/path/to/data \
 
 两个 JSONL 都需要非空 question，不能同时显式指定 input_len、repeat_rate 或 prefix_num。正式文件的每条请求需要对应的 token 前缀；已有数据不再按 input_len 截断。不要预热时写 `--prefix_test=false` 并省略 warmup_dataset；正常的数据模式可用 `--dataset_type=normal`。
 
-模型凭据用 `ENDPOINT_API_KEY`，指标凭据用 `METRICS_API_KEY`，两者不混用。参数清单和默认值见 [tester.yaml](tester.yaml) 或 `--help`。已有 Linux Python 环境可安装 [build/requirements.txt](build/requirements.txt) 后直接执行 runner.py，通过 TESTPLANE_OUTPUT_DIR 指定输出目录；真实 AISBench 不支持 Windows 原生运行。
+模型凭据用 `ENDPOINT_API_KEY`，指标凭据用 `METRICS_API_KEY`，两者不混用。参数清单和默认值见 [tester.yaml](tester.yaml) 或 `--help`。已有 AISBench 的 Linux 容器可直接执行 run.sh，通过 TESTPLANE_OUTPUT_DIR 指定输出目录，不必安装本仓固定依赖；真实 AISBench 不支持 Windows 原生运行。
 
-### 保留容器里已有的 AISBench 3.1
+### 在已有 AISBench 容器里运行
 
-如果报错是源码哈希不同，可以使用 0.1.1 起提供的兼容模式。从容器内的项目根目录执行：
+从 0.1.2 起取消运行前的兼容性检查，直接使用当前 Python 环境里的 AISBench。从容器内的项目根目录执行：
 
 ```bash
-export TESTPLANE_AISBENCH_CHECK=compatible
-
-# 先检查已安装的真实 AISBench，使用本机模拟的模型服务和缓存计数。
-# 无需真实模型、外部数据或 UCM；需要当前环境的 transformers/tokenizers。
-python3 testers/aisbench-perf/tests/real_smoke.py
-
-# 检查通过后运行真实模型；替换下面地址、模型名和容器内路径。
+# 替换下面地址、模型名和容器内路径。
 TESTPLANE_OUTPUT_DIR="/tmp/perf-$(date +%Y%m%d-%H%M%S)-$$" \
 sh testers/aisbench-perf/run.sh \
   --url=http://model-server:8000/v1 --model_name=served-model \
@@ -60,9 +54,9 @@ sh testers/aisbench-perf/run.sh \
   --metrics_endpoint=http://prefill-0:8000/metrics
 ```
 
-默认值仍是 `strict`。compatible 只放宽 3.1 系列的源码哈希差异，不忽略缺包、缺文件、请求失败和结果格式错误，也不安装或修改 AISBench。模拟服务检查通过后仍需真实 UCM 联调。`run-local.sh` 会透传该变量。
+无需设置 `TESTPLANE_AISBENCH_CHECK`；以前设置过也不影响执行。不检查版本范围、源码哈希和内部文件清单，也不增加接口预检。实际调用、结果解析和缓存指标采集错误仍按原逻辑报告。
 
-实际版本、检查模式和不匹配文件写入 `result.json` 的 metadata；源码不匹配时 `aisbench_commit` 为 null，提示写入 `logs/runner.log`。缓存计数校验与 `metrics_policy` 保持原有行为。具体约定见 [环境检查设计](../../design/impl/aisbench-environment.md)。
+实际版本尽力写入 `result.json` 的 metadata，读不到则填 null。具体约定见 [现有环境运行说明](../../design/impl/aisbench-environment.md)。可选的 `python3 testers/aisbench-perf/tests/real_smoke.py` 使用本机模拟服务检查流程，不是正式测试的前置条件。
 
 ## 指标怎么看
 
@@ -85,7 +79,7 @@ sh testers/aisbench-perf/run.sh \
 
 需要准备同 namespace 的 `testplane-models`、`testplane-datasets` PVC，或发布前修改 tester.yaml 的 mounts.source。修改后按平台版本规则发布，文件不会因为传了路径自动上传。
 
-输出包括 `result.json`、`raw/resolved.json`、`raw/datasets/`，每轮的 warmup/measurement 请求、AISBench 原始结果、计数快照 `.prom`、采集时间/错误记录和分组命中率。退出码 0 表示所选策略下完整完成；2 为参数/版本问题；1 为请求、执行、结果或 required 采集失败。多轮任一轮失败，已完成结果仍保留。
+输出包括 `result.json`、`raw/resolved.json`、`raw/datasets/`，每轮的 warmup/measurement 请求、AISBench 原始结果、计数快照 `.prom`、采集时间/错误记录和分组命中率。退出码 0 表示所选策略下完整完成；2 为参数/配置问题；1 为请求、执行、结果或 required 采集失败。多轮任一轮失败，已完成结果仍保留。
 
 ## 开发检查
 
@@ -96,10 +90,10 @@ python -m pip install PyYAML==6.0.2 jsonschema==4.23.0 prometheus-client==0.21.1
 python -m unittest discover -s testers/aisbench-perf/tests -v
 
 docker run --rm --init --read-only --shm-size=1g --tmpfs /tmp:rw,exec,size=4g \
-  --entrypoint python3 ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.1 \
+  --entrypoint python3 ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.2 \
   /tester/tests/real_smoke.py
 ```
 
 后一个命令运行真实 AISBench，但模型和缓存计数由模拟 HTTP 服务提供，只验证接入流程。CI 包含构建和此项检查。真实 UCM 验收仍需外部命中、加载记录和目标 PD/DP 环境；本次开发机没有 Docker，这部分不能声称已验证。
 
-固定版本见 [AISBench 源码锁](build/aisbench-lock.json)，独立镜像内的 runtime.py、testplane_model.py、构建依赖和锁文件与精度 Tester 保持一致并由测试检查。设计依据：[性能设计](../../design/impl/aisbench-perf.md)。
+本仓镜像的构建基线见 [AISBench 源码锁](build/aisbench-lock.json)，运行时不读取或校验它。独立镜像内的 runtime.py、testplane_model.py 和构建依赖与精度 Tester 保持一致。设计依据：[性能设计](../../design/impl/aisbench-perf.md)。
