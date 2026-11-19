@@ -61,7 +61,8 @@ def validate(args):
 
 def work(execution, args):
     validate(args)
-    _, versions = verify_aisbench()
+    _, versions = verify_aisbench(execution.log)
+    execution.result["metadata"].update(versions)
     tokenizer, tokenizer_files = tokenizer_info(input_path(args.model_path, directory=True))
     rows, warmup, prefix_count, evidence = prepare_data(args, tokenizer, execution.output)
     execution.result["workload"] = dict(model_name=args.model_name, dataset=args.dataset or "generated-" + args.dataset_type,
