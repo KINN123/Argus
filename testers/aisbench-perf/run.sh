@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec python3 "$SCRIPT_DIR/runner.py" "$@"
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec sh "$HERE/../../runners/aisbench-perf/run.sh" "$@"

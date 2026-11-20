@@ -19,7 +19,7 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
-VERSION = "0.1.4"
+VERSION = "0.2.0"
 HERE = Path(__file__).resolve().parent
 MODEL = "testplane-model"
 DATA = "testplane-data"
@@ -80,9 +80,11 @@ def boolean(value):
 
 
 def public_args(parser):
-    parser.add_argument("--url", required=True, help="OpenAI 兼容服务 base URL")
-    parser.add_argument("--model_name", required=True, help="请求中的模型名")
-    parser.add_argument("--model_path", required=True, help="本地 tokenizer 目录的绝对路径")
+    parser.epilog = "平台输入：--params-file FILE > AG_PARAMS_FILE > /workspace/input/params.jsonl；每行一个业务参数对象。"
+    for name, env, help_text in (("url", "AG_SERVED_URL", "服务 base URL"),
+                                 ("model_name", "AG_SERVED_MODEL_NAME", "请求中的模型名"),
+                                 ("model_path", "AG_MODEL_PATH", "本地 tokenizer 绝对路径")):
+        parser.add_argument("--" + name, default=os.environ.get(env), required=not bool(os.environ.get(env)), help=help_text)
     parser.add_argument("--concurrency", type=integer(1, 100000), default=1)
     parser.add_argument("--request_rate", type=number(0, 64000), default=0)
     parser.add_argument("--seed", type=integer(0), default=1)
@@ -239,6 +241,8 @@ def official_template(preset):
 def write_config(path, args, dataset_dir, template, perf, concurrency=None, output_len=None):
     generation = {"temperature": 0 if perf else args.temperature,
                   "ignore_eos": perf, "seed": args.seed}
+    if perf and getattr(args, "thinking", "default") != "default":
+        generation["chat_template_kwargs"] = {"enable_thinking": args.thinking == "on"}
     if not perf:
         generation["top_p"] = args.top_p
         if args.thinking != "default":
@@ -265,11 +269,10 @@ def write_config(path, args, dataset_dir, template, perf, concurrency=None, outp
 
 class Execution:
     def __init__(self, name):
-        self.output = Path(os.environ.get("TESTPLANE_OUTPUT_DIR", "/workspace/output")).resolve()
-        self.result = dict(schema_version="1.0", tester=dict(name=name, version=VERSION),
+        self.output = Path(os.environ.get("AG_OUTPUT_DIR") or os.environ.get("TESTPLANE_OUTPUT_DIR", "/workspace/output")).resolve()
+        self.result = dict(schema_version="2.0", runner=dict(name=name, version=VERSION),
                            started_at=now(), status="failed", metrics=[], metadata={}, notes="")
-        for field in ("run_id", "task_id", "attempt_id"):
-            self.result[field] = os.environ.get("TESTPLANE_" + field.upper(), "local")
+        self.result.update(task_id=os.environ.get("AG_TASK_ID", "local"), attempt_no=1, runner_seq=1)
         self.child = None
         self.last_aisbench_directory = None
         self.started = time.monotonic()
@@ -282,6 +285,11 @@ class Execution:
         (self.output / "logs").mkdir()
         (self.output / "raw").mkdir()
         self.prepared = True
+        for key, env in (("attempt_no", "AG_ATTEMPT"), ("runner_seq", "AG_RUNNER_SEQ")):
+            try:
+                self.result[key] = integer()(os.environ.get(env, "1"))
+            except argparse.ArgumentTypeError as exc:
+                raise Failure(f"{env}: {exc}") from exc
 
     def log(self, message):
         message = redact(str(message))
@@ -351,7 +359,7 @@ class Execution:
                     break
                 seen.add(key)
         if error:
-            self.result["error"] = dict(code="CANCELED" if error.reason == "canceled" else "TESTER_NONZERO_EXIT",
+            self.result["error"] = dict(code="CANCELED" if error.reason == "canceled" else "RUNNER_NONZERO_EXIT",
                                          message=redact(str(error)), retryable=False, detail=dict(reason=error.reason))
             self.log(error)
             if self.last_aisbench_directory is not None:
@@ -367,6 +375,7 @@ class Execution:
         else:
             self.result["status"] = "succeeded"
         self.result.update(finished_at=now(), duration_ms=int((time.monotonic() - self.started) * 1000))
+        self.log(f"结果将保存到：{self.output / 'result.json'}")
         # Sanitize upstream text outputs too; auth was injected only into model instances.
         for path in self.output.rglob("*"):
             if path.is_file() and path.suffix in (".json", ".jsonl", ".py", ".log", ".out", ".txt", ".csv"):
@@ -382,18 +391,81 @@ class Execution:
         return error.exit_code if error else 0
 
 
+def input_cases(argv):
+    """Convert platform JSONL rows into argv without shell evaluation."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    selector = Parser(add_help=False)
+    selector.add_argument("--params-file")
+    selected, cli = selector.parse_known_args(argv)
+    if "--help" in cli or "-h" in cli:
+        return [cli]
+    filename = selected.params_file or os.environ.get("AG_PARAMS_FILE")
+    default = Path("/workspace/input/params.jsonl")
+    path = Path(filename) if filename else default if default.is_file() else None
+    if path is None:
+        return [cli]
+    try:
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except (OSError, ValueError) as exc:
+        raise Failure(f"参数文件读取失败：{exc}") from exc
+    overridden = {arg.split("=", 1)[0][2:] for arg in cli if arg.startswith("--")}
+    cases = []
+    for row in rows or [{}]:
+        if not isinstance(row, dict):
+            raise Failure("参数文件每行必须是 JSON 对象")
+        if set(row) & {"url", "model_name", "model_path"}:
+            raise Failure("公共参数 url/model_name/model_path 请通过 AG_* 或 CLI 传入")
+        values = []
+        for key, value in row.items():
+            if key in overridden:
+                continue
+            if not key or key.startswith("-") or not key.replace("_", "").isalnum():
+                raise Failure("非法参数名")
+            if value is None:
+                continue
+            if key in ("metrics_endpoint", "pod_info") and isinstance(value, list):
+                if key == "pod_info":
+                    values.extend(["--pod_info"] + [str(v) for v in value])
+                else:
+                    values.extend("--metrics_endpoint=" + str(v) for v in value)
+            else:
+                text = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list, bool)) else str(value)
+                values.append("--" + key + "=" + text)
+        cases.append(values + cli)
+    return cases
+
+
 def run_main(name, parser, work, argv=None):
     execution = Execution(name)
     try:
-        args = parser().parse_args(argv)  # --help has no filesystem side effects
+        cases = [parser().parse_args(values) for values in input_cases(argv)]
         execution.prepare()
         for sig in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sig, execution.cancel)
-        args.url = validate_url(args.url)
-        if not args.model_name.strip():
-            raise Failure("model_name 不能为空")
-        input_path(args.model_path, directory=True)
-        work(execution, args)
+        root_output = execution.output
+        case_metadata = []
+        for case_id, args in enumerate(cases, 1):
+            args.url = validate_url(args.url)
+            if not args.model_name.strip():
+                raise Failure("model_name 不能为空")
+            input_path(args.model_path, directory=True)
+            start = len(execution.result["metrics"])
+            if len(cases) > 1:
+                execution.output = root_output / f"cases/{case_id}"
+                (execution.output / "logs").mkdir(parents=True)
+            try:
+                work(execution, args)
+            finally:
+                for item in execution.result["metrics"][start:]:
+                    item["labels"]["case"] = case_id
+                case_metadata.append(dict(case=case_id, output=str(execution.output.relative_to(root_output)),
+                                          metadata=json.loads(json.dumps({k: v for k, v in execution.result["metadata"].items() if k != "cases"})),
+                                          workload=execution.result.get("workload")))
+                execution.output = root_output
+                if len(cases) > 1:
+                    execution.result["metadata"]["cases"] = case_metadata
+                    if any("metrics_complete" in c["metadata"] for c in case_metadata):
+                        execution.result["metadata"]["metrics_complete"] = all(c["metadata"].get("metrics_complete", False) for c in case_metadata)
         return execution.finish()
     except Failure as exc:
         if not execution.prepared and (not execution.output.exists() or not any(execution.output.iterdir())):

@@ -18,6 +18,10 @@ GROUPS = {
         "hbm": ("vllm:prefix_cache_queries_total", "vllm:prefix_cache_hits_total", "hbm_queries"),
         "external": ("external_prefix_cache_queries_total", "external_prefix_cache_hits_total", "external_queries"),
     },
+    "vllm_prompt": {
+        "hbm": ("vllm:prompt_tokens_total", "vllm:prefix_cache_hits_total", "prompt_tokens"),
+        "external": ("vllm:prompt_tokens_total", "external_prefix_cache_hits_total", "prompt_tokens"),
+    },
 }
 
 
@@ -83,11 +87,14 @@ def group_series(snapshot, query, hit):
     samples = snapshot["samples"]
     # Some engines use the vllm: alias. Never add both representations together.
     pairs = [(query, hit)]
-    if query.startswith("external_"):
-        pairs.append(("vllm:" + query, "vllm:" + hit))
-    present = [pair for pair in pairs if any(key[0] in pair for key in samples)]
-    if len(present) != 1:
-        raise ValueError("计数缺失或同时出现两套别名")
+    if hit.startswith("external_"):
+        pairs.append(("vllm:" + query if query.startswith("external_") else query, "vllm:" + hit))
+    # A shared denominator cannot establish that an external hit counter exists.
+    present = [pair for pair in pairs if any(key[0] == pair[1] for key in samples)]
+    if not present:
+        raise ValueError(f"缺少命中计数 {hit}（或其 vllm: 别名）；查询计数应为 {query}")
+    if len(present) > 1:
+        raise ValueError(f"同时出现两套命中计数别名：{hit}")
     query, hit = present[0]
     queries = {labels: value for (name, labels), value in samples.items() if name == query}
     hits = {labels: value for (name, labels), value in samples.items() if name == hit}
@@ -150,9 +157,23 @@ def compare(before, after, profile, labels):
 
 
 def require_valid(snapshot, args, labels):
-    _, summary, complete = compare(snapshot, snapshot, args.metrics_profile, labels)
+    _, summary, complete = compare(snapshot, snapshot, choose_profile(snapshot, args.metrics_profile), labels)
     if not complete and args.metrics_policy == "required":
         raise Failure("正式请求前缓存计数不完整：" + json.dumps(summary, ensure_ascii=False), "metrics_unavailable", 1)
+
+
+def choose_profile(snapshot, requested):
+    if requested != "auto":
+        return requested
+    for profile in ("ucm_connector", "vllm_prefix", "vllm_prompt"):
+        _, _, complete = compare(snapshot, snapshot, profile, {})
+        if complete:
+            return profile
+    for profile in ("vllm_prefix", "vllm_prompt", "ucm_connector"):
+        _, summary, _ = compare(snapshot, snapshot, profile, {})
+        if summary["hbm"]["complete"]:
+            return profile
+    return "vllm_prefix"
 
 
 def settle(seconds):

@@ -1,0 +1,17 @@
+{
+  "source": "User supplied reference directory, read on 2026-11-20",
+  "files": {
+    "ais_bench/generate_datasets.py": "d941ccb4e85ca625a617845a3622cf7f2041b77bf6a481ecc06ecfd45c81ec27",
+    "ais_bench/hit_rate.py": "3fa06adc475e593a731f3b5ed8549eff261b938782fc5fbb3b32cbe1fc80e9a6",
+    "ais_bench/post_process.py": "7d9d0d18ec209c5bd866ce779ea1aa9b8aa04e0d84dd5f3b1b0070c219ca81cd",
+    "ais_bench/prefix_cache_test.py": "a4e76a90972c636fd26aeb010304e7a67722682efc61f47c5f87143bf4fa49b1",
+    "ais_bench/track_vllm_metrics.py": "a3069cc61d14f617a864d96f7bcfc73cbb69d1ddd9db96fab1ecb55bca05afac",
+    "aisbench_auto_tools_prefix/config.py": "326a3bfb5363fa2a5ed75740713e2a5ca925e0145fbeeb51ec53f400107cd426",
+    "aisbench_auto_tools_prefix/dataset_generator.py": "cfc831a6d4cebe1aebb0d174e2c019afae3f561fed67d28a2df2f048430a7c3c",
+    "aisbench_auto_tools_prefix/default_api.py": "3fc5fbcf3fc7ab97ebb9e5ab90c722a324aeeceedb440a96c75fcfe3c8264c58",
+    "aisbench_auto_tools_prefix/hit_rate_collector.py": "9c6353bc9b3a02b69fbb4b1f07d2bef67f3650263051fcd9a1aca9a3671ba9f2",
+    "aisbench_auto_tools_prefix/prefix_bench.py": "ecb2a9c8cb1c1bb8d9afc30e8d31441a3fdf222d0671f32d2471228cb1d1bd01",
+    "aisbench_auto_tools_prefix/README.md": "f1be541bb4d56d90bfe35fcb08d2eaa0063cc100f7ac1ce7fe440811bddb85c3",
+    "aisbench_auto_tools_prefix/result_writer.py": "8c1d8fa2c9f6628ccb2f3a521703b4a9adec9d2078a16345bc0b91fedddc7c73"
+  }
+}

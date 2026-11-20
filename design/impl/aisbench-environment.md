@@ -1,6 +1,6 @@
 # 使用现有 AISBench 环境
 
-覆盖范围：两个 AISBench Tester 在用户已有 Linux 容器里直接执行，版本 0.1.4。不涉及平台状态机、数据表、API，也不包含旧 Tester 向 Argus v2 Runner 契约的迁移。
+本文记录 0.1.4 的环境适配背景；0.2.0 的当前实现、平台 Runner 接入、指标默认策略和报告格式以 [旧实现迁移](aisbench-reference-migration.md) 为准。下文不定义平台状态机、数据表或 API。
 
 ## 直接运行
 

@@ -1,0 +1,85 @@
+name: aisbench-acc
+version: 0.2.0
+display_name: AISBench 精度测试
+description: 使用 GSM8K 做精度评测，保存逐题请求、回答和评分。分数低可成功，漏题或评分不完整会失败。
+role: test
+on_failure: continue
+entry:
+- /runner/run.sh
+input_format: jsonl
+image: ghcr.io/ucm-system/argus-runner-aisbench-acc:0.2.0
+resources:
+  cpu: '4'
+  memory: 8Gi
+  gpu:
+    resource: nvidia.com/gpu
+    count: 0
+concurrency:
+  endpoint_exclusive: true
+mounts: []
+exports: []
+consumes:
+- AG_SERVED_URL
+- AG_SERVED_MODEL_NAME
+- AG_MODEL_PATH
+placeholder: '{"dataset":"/data/gsm8k","max_samples":10,"concurrency":1}'
+parameters:
+- name: concurrency
+  type: integer
+  required: false
+  description: 同时请求数上限，1..100000。
+  default: 1
+- name: request_rate
+  type: number
+  required: false
+  description: 每秒请求数，0..64000；0 不额外限速。
+  default: 0
+- name: seed
+  type: integer
+  required: false
+  description: 随机种子；0 使用系统熵并在报告记录实际 seed，非零可复现。
+  default: 1
+- name: dataset
+  type: string
+  required: true
+  description: 容器内数据路径。4shot 需要含 train.jsonl/test.jsonl 的目录；0shot 需要 JSONL 文件。
+- name: dataset_config
+  type: string
+  required: false
+  description: gsm8k_4shot_cot 或 gsm8k_jsonl_0shot；每行必须有 question 和数字 answer。
+  default: gsm8k_4shot_cot
+- name: max_samples
+  type: integer
+  required: false
+  description: 0 表示全部，否则取原顺序前 N 条，条数不足报错。
+  default: 0
+- name: output_len
+  type: integer
+  required: false
+  description: 每题最多输出 token 数，至少 1；允许 EOS 正常结束。
+  default: 1024
+- name: temperature
+  type: number
+  required: false
+  description: 0..2，回答随机性。
+  default: 0
+- name: top_p
+  type: number
+  required: false
+  description: 大于 0 且不超过 1。
+  default: 1
+- name: thinking
+  type: string
+  required: false
+  description: default 跟随服务；on/off 通过 chat_template_kwargs 指定思考模式。
+  default: default
+- name: replay_rounds
+  type: integer
+  required: false
+  description: 1 或 2；第二轮真正重发请求，结果单独保存。
+  default: 1
+env:
+  ENDPOINT_API_KEY:
+    required: false
+    secret: true
+    description: 模型服务的 Bearer token，仅通过环境变量传入。
