@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from collections import deque
 import hashlib
 import importlib.metadata
 import json
@@ -16,7 +17,7 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 HERE = Path(__file__).resolve().parent
 MODEL = "testplane-model"
 DATA = "testplane-data"
@@ -234,7 +235,7 @@ def write_config(path, args, dataset_dir, template, perf, concurrency=None, outp
                    path=str(dataset_dir), reader_cfg=dict(input_columns=["question"], output_column="answer"),
                    infer_cfg=dict(prompt_template=dict(type="ais_bench.benchmark.openicl.icl_prompt_template.PromptTemplate", template=template),
                                   retriever=dict(type="ais_bench.benchmark.openicl.icl_retriever.ZeroRetriever"),
-                                  inferencer=dict(type="ais_bench.benchmark.openicl.icl_inferencer.GenInferencer")),
+                                  inferencer=dict(type="testplane_inferencer.GenInferencer")),
                    eval_cfg=dict(evaluator=dict(type="ais_bench.benchmark.datasets.Gsm8kEvaluator"),
                                  pred_postprocessor=dict(type="ais_bench.benchmark.datasets.gsm8k_postprocess"),
                                  dataset_postprocessor=dict(type="ais_bench.benchmark.datasets.gsm8k_dataset_postprocess")))
@@ -252,6 +253,7 @@ class Execution:
         for field in ("run_id", "task_id", "attempt_id"):
             self.result[field] = os.environ.get("TESTPLANE_" + field.upper(), "local")
         self.child = None
+        self.last_aisbench_directory = None
         self.started = time.monotonic()
         self.prepared = False
 
@@ -287,6 +289,7 @@ class Execution:
 
     def run_aisbench(self, directory, args, dataset_dir, template, perf, concurrency=None, output_len=None):
         directory.mkdir(parents=True, exist_ok=False)
+        self.last_aisbench_directory = directory
         config = directory / "config.py"
         audit = directory / "requests"
         audit.mkdir()
@@ -333,6 +336,16 @@ class Execution:
             self.result["error"] = dict(code="CANCELED" if error.reason == "canceled" else "TESTER_NONZERO_EXIT",
                                          message=redact(str(error)), retryable=False, detail=dict(reason=error.reason))
             self.log(error)
+            if self.last_aisbench_directory is not None:
+                log_path = self.last_aisbench_directory / "aisbench.log"
+                self.log(f"AISBench 详细日志：{log_path}")
+                try:
+                    with log_path.open(encoding="utf-8", errors="replace") as handle:
+                        tail = "".join(deque(handle, maxlen=100))[-16000:]
+                    if tail:
+                        self.log("AISBench 最后 100 行（最多 16000 字符）：\n" + tail)
+                except OSError as exc:
+                    self.log(f"无法读取 AISBench 日志：{exc}")
         else:
             self.result["status"] = "succeeded"
         self.result.update(finished_at=now(), duration_ms=int((time.monotonic() - self.started) * 1000))

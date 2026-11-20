@@ -1,11 +1,11 @@
 name: aisbench-perf
-version: 0.1.2
+version: 0.1.3
 display_name: AISBench 性能与 prefix 命中率
 description: 固定负载的性能测试，按 prefix 工具方法先预热再测量。采集稳定实例的缓存计数，区分 HBM、UCM 与 external 的分母。
 role: test
 on_failure: continue
 entry: /tester/run.sh
-image: ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.2
+image: ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.3
 resources:
   cpu: "4"
   memory: "8Gi"
