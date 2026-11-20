@@ -1,6 +1,6 @@
 """Run the installed, real AISBench against a tiny local OpenAI-compatible mock.
 
-Execute inside the built Linux image: python3 /tester/tests/real_smoke.py.
+Execute inside the built Linux image: python3 /runner/tests/real_smoke.py.
 This verifies integration, not real model quality, throughput, or UCM loading.
 """
 import json

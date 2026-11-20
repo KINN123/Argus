@@ -59,10 +59,15 @@ def validate_prefixes(tokenizer, rows, warmup):
     evidence = []
     prefix_tokens = [encode(tokenizer, text) for text in prefixes]
     prefix_chats = [chat_tokens(tokenizer, text) for text in prefixes]
+    buckets = {}
+    for i, tokens in enumerate(prefix_tokens):
+        if tokens:
+            buckets.setdefault(tokens[0], []).append(i)
     for index, row in enumerate(rows):
         raw_tokens, actual = encode(tokenizer, row["question"]), chat_tokens(tokenizer, row["question"])
         candidates = []
-        for prefix_id, (text, tokens, chat) in enumerate(zip(prefixes, prefix_tokens, prefix_chats)):
+        for prefix_id in buckets.get(raw_tokens[0] if raw_tokens else None, []):
+            text, tokens, chat = prefixes[prefix_id], prefix_tokens[prefix_id], prefix_chats[prefix_id]
             reused = matching_prefix(row["question"], raw_tokens, actual, text, tokens, chat)
             if reused is not None:
                 candidates.append((prefix_id, reused))
@@ -80,8 +85,9 @@ def validate_prefixes(tokenizer, rows, warmup):
     return evidence, len(prefixes)
 
 
-def generate(tokenizer, args, corpus):
-    rng = random.Random(args.seed)
+def generate_corpus(tokenizer, args, corpus):
+    args.effective_seed = args.seed or random.SystemRandom().randrange(1, 2**63)
+    rng = random.Random(args.effective_seed)
     texts = [row["question"] for row in read_jsonl(corpus)]
     prefix_len = int(args.input_len * args.repeat_rate) if args.dataset_type == "prefix_cache" else 0
     if 0 < prefix_len < args.input_len and args.input_len - prefix_len < 4:
@@ -129,6 +135,88 @@ def generate(tokenizer, args, corpus):
     return rows, warmup
 
 
+def random_text(tokenizer, rng, vocabulary, length):
+    if not length:
+        return ""
+    ids = []
+    for _ in range(128):
+        need = max(1, length - len(ids))
+        ids.extend(rng.choices(vocabulary, k=need + 8))
+        text = decode(tokenizer, ids[:length])
+        ids = encode(tokenizer, text)
+        if len(ids) == length and "\ufffd" not in text and text.strip():
+            return text
+        if len(ids) >= length:
+            ids = ids[:max(0, length - 8)]
+    raise Failure("随机 token 转文本后无法达到目标长度")
+
+
+def generate(tokenizer, args, corpus):
+    if getattr(args, "data_source", "random") == "corpus":
+        return generate_corpus(tokenizer, args, corpus)
+    args.effective_seed = args.seed or random.SystemRandom().randrange(1, 2**63)
+    rng = random.Random(args.effective_seed)
+    special = set(tokenizer.all_special_ids)
+    vocabulary = []
+    for token in sorted(set(tokenizer.get_vocab().values()) - special):
+        text = decode(tokenizer, [token])
+        if text.strip() and "\ufffd" not in text and encode(tokenizer, text) == [token]:
+            vocabulary.append(token)
+    if len(vocabulary) < 3:
+        raise Failure("tokenizer 缺少可往返编码的普通 token")
+    lengths = []
+    for _ in range(args.data_num):
+        if args.length_mean is not None:
+            size = round(rng.gauss(args.length_mean, args.length_std))
+            size = max(args.length_min or 4, size)
+            if args.length_max is not None:
+                size = min(size, args.length_max)
+        elif args.length_min is not None:
+            size = rng.randint(args.length_min, args.length_max)
+        else:
+            size = args.input_len
+        lengths.append(size)
+    rows, warmup, pool = [], [], {}
+    used_prefixes, used_separators = set(), set()
+    for index, length in enumerate(lengths):
+        prefix_len = int(length * args.repeat_rate) if args.dataset_type == "prefix_cache" else 0
+        private = args.prefix_mode == "private"
+        gap = 1 if private else 3
+        if 0 < prefix_len < length and length - prefix_len <= gap:
+            raise Failure("前缀后剩余长度不足以容纳分隔符和后缀")
+        key = (index if private else index % args.prefix_num, prefix_len)
+        if prefix_len and key not in pool:
+            for _ in range(128):
+                prefix = random_text(tokenizer, rng, vocabulary, prefix_len)
+                if prefix not in used_prefixes:
+                    break
+            else:
+                raise Failure("无法生成足够的不同随机前缀")
+            pool[key] = prefix
+            used_prefixes.add(prefix)
+            warmup.extend(dict(question=prefix, answer="none") for _ in range(args.dp))
+        prefix = pool.get(key, "")
+        if prefix_len == length:
+            text = prefix
+        elif not prefix_len:
+            text = random_text(tokenizer, rng, vocabulary, length)
+        else:
+            prefix_ids, prefix_chat = encode(tokenizer, prefix), chat_tokens(tokenizer, prefix)
+            for _ in range(128):
+                separator = " " if private else random_text(tokenizer, rng, vocabulary, 3)
+                if not private and separator in used_separators:
+                    continue
+                suffix = random_text(tokenizer, rng, vocabulary, length - prefix_len + 8)
+                text = fixed_text(tokenizer, prefix + separator + suffix, length)
+                if matching_prefix(text, encode(tokenizer, text), chat_tokens(tokenizer, text), prefix, prefix_ids, prefix_chat) is not None:
+                    used_separators.add(separator)
+                    break
+            else:
+                raise Failure("随机数据不能保持指定 token 长度和聊天前缀")
+        rows.append(dict(question=text, answer="none"))
+    return rows, warmup
+
+
 def prepare_data(args, tokenizer, output):
     evidence = {}
     if args.dataset:
@@ -141,7 +229,9 @@ def prepare_data(args, tokenizer, output):
     else:
         corpus = Path(__file__).parent / "data/GSM8K.jsonl"
         rows, warmup = generate(tokenizer, args, corpus)
-        evidence["corpus_sha256"] = digest(corpus)
+        evidence["effective_seed"] = getattr(args, "effective_seed", args.seed)
+        if args.data_source == "corpus":
+            evidence["corpus_sha256"] = digest(corpus)
     for name, data in (("measurement", rows), ("warmup", warmup)):
         if data:
             jsonl(output / "raw/datasets" / name / "test.jsonl", [dict(question=row["question"], answer="none") for row in data])
@@ -153,5 +243,5 @@ def prepare_data(args, tokenizer, output):
     else:
         prefix_count = 0
     evidence["token_lengths"] = [dict(id=index, content=len(encode(tokenizer, row["question"])), chat=len(chat_tokens(tokenizer, row["question"]))) for index, row in enumerate(rows)]
-    evidence["generator"] = "prefix-separator3-suffix-v2"
+    evidence["generator"] = args.data_source + "-" + args.prefix_mode + "-v3"
     return rows, warmup, prefix_count, evidence

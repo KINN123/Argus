@@ -191,7 +191,7 @@ class PerformanceTests(unittest.TestCase):
              patch.object(runtime.Execution, "run_aisbench", fake_run):
             code = runtime.run_main("aisbench-perf", runner.parser, runner.work, self.base +
                                     [f"--dataset={data}", f"--warmup_dataset={warmup}", "--settle_seconds=0",
-                                     f"--repeat={repeats}", "--metrics_policy=" + policy, "--output_len=3"])
+                                     f"--repeat={repeats}", "--metrics_policy=" + policy, "--output_len=3", "--monitor_interval_seconds=0"])
         result = json.loads((output / "result.json").read_text(encoding="utf-8"))
         import yaml
         import jsonschema

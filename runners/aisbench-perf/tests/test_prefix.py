@@ -137,7 +137,7 @@ class PrefixTests(unittest.TestCase):
                       ["--dataset=/d"], ["--warmup_dataset=/w"], ["--metrics_endpoint=http://x/metrics"]):
             with self.subTest(extra=extra), self.assertRaises(runtime.Failure):
                 runner.validate(runner.parser().parse_args(base + extra))
-        args = runner.parser().parse_args(base)
+        args = runner.parser().parse_args(base + ["--metrics_policy=required"])
         with self.assertRaises(runtime.Failure):
             require_valid({"x": {"error": "missing"}}, args, {})
         args.metrics_policy = "best_effort"

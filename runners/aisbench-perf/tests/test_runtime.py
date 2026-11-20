@@ -169,12 +169,13 @@ class RuntimeTests(unittest.TestCase):
     def test_manifest_matches_cli(self):
         import yaml
         import runner
-        manifest = yaml.safe_load((ROOT / "tester.yaml").read_text(encoding="utf-8"))
+        manifest = yaml.safe_load((ROOT / "runner.yaml").read_text(encoding="utf-8"))
         actions = {a.dest: a for a in runner.parser()._actions if a.dest != "help"}
-        self.assertEqual(set(manifest["parameters"]), set(actions))
-        for name, definition in manifest["parameters"].items():
+        self.assertEqual({p["name"] for p in manifest["parameters"]}, set(actions) - {"url", "model_name", "model_path"})
+        for definition in manifest["parameters"]:
+            name = definition["name"]
             if "default" in definition:
-                value = actions[name].type(definition["default"]) if actions[name].type else definition["default"]
+                value = actions[name].type(str(definition["default"])) if actions[name].type else definition["default"]
                 self.assertEqual(value, actions[name].default, name)
         self.assertEqual(manifest["version"], runtime.VERSION)
 

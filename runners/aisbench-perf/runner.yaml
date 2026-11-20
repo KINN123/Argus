@@ -1,0 +1,195 @@
+name: aisbench-perf
+version: 0.2.0
+display_name: AISBench 性能与 prefix 命中率
+description: 固定负载的性能测试，按 prefix 工具方法先预热再测量。采集稳定实例的缓存计数，区分 HBM、UCM 与 external 的分母。
+role: test
+on_failure: continue
+entry:
+- /runner/run.sh
+input_format: jsonl
+image: ghcr.io/ucm-system/argus-runner-aisbench-perf:0.2.0
+resources:
+  cpu: '4'
+  memory: 8Gi
+  gpu:
+    resource: nvidia.com/gpu
+    count: 0
+concurrency:
+  endpoint_exclusive: true
+mounts: []
+exports: []
+consumes:
+- AG_SERVED_URL
+- AG_SERVED_MODEL_NAME
+- AG_MODEL_PATH
+placeholder: '{"input_len":256,"output_len":32,"data_num":16,"concurrency":2,"repeat_rate":"50%","metrics_profile":"auto","metrics_policy":"best_effort"}'
+parameters:
+- name: concurrency
+  type: integer
+  required: false
+  description: 同时请求数上限，1..100000。
+  default: 1
+- name: request_rate
+  type: number
+  required: false
+  description: 每秒请求数，0..64000；0 不额外限速。
+  default: 0
+- name: seed
+  type: integer
+  required: false
+  description: 随机种子；0 使用系统熵并在报告记录实际 seed，非零可复现。
+  default: 1
+- name: dataset_type
+  type: string
+  required: false
+  description: normal 为普通负载，prefix_cache 为前缀缓存负载；随机生成支持固定或变化长度。
+  default: prefix_cache
+- name: dataset
+  type: string
+  required: false
+  description: 可选，已有 JSONL 文件绝对路径，每行非空 question；与显式 input_len/prefix_num/repeat_rate
+    互斥。
+- name: warmup_dataset
+  type: string
+  required: false
+  description: 已有前缀数据开启预热时必填，必须与正式数据有对应的 token 前缀。
+- name: input_len
+  type: integer
+  required: false
+  description: 生成文本的 token 数，至少 4，不含聊天模板。
+  default: 2048
+- name: output_len
+  type: integer
+  required: false
+  description: 输出 token 上限，至少 1；请求 ignore_eos=true，同时记录实际长度。
+  default: 128
+- name: data_num
+  type: integer
+  required: false
+  description: 生成数据默认 64；已有文件默认全部；显式值至少 1，取前 N 条。
+- name: test_type
+  type: string
+  required: false
+  description: stream 或 text；非流式逐 token 时延为 null。
+  default: stream
+- name: repeat
+  type: integer
+  required: false
+  description: 至少 1；同一批数据逐轮测试，保留每轮结果，不清缓存。
+  default: 1
+- name: prefix_num
+  type: integer
+  required: false
+  description: 生成前缀种数，1..min(data_num,100000)；normal 或已有 dataset 不能显式设置。
+  default: 1
+- name: repeat_rate
+  type: string
+  required: false
+  description: 0..1 或 0%..100%；目标前缀占比，不是实际命中率。
+  default: 50%
+- name: prefix_test
+  type: boolean
+  required: false
+  description: true/false；前缀模式默认 true，normal 默认 false。
+- name: dp
+  type: integer
+  required: false
+  description: 1..100000；生成数据的预热副本数参考 DP，已有预热文件按行数发送，dp 只影响并发；不保证路由覆盖全部实例。
+  default: 1
+- name: metrics_endpoint
+  type: array
+  required: false
+  description: 完整 /metrics 地址数组；PD 填 Prefill 实例，未填时从服务 URL 推导。CLI 可重复传入。
+- name: pod_info
+  type: array
+  required: false
+  description: 旧版实例地址列表，如 127.0.0.1:7800；与 metrics_endpoint 互斥。
+- name: metrics_profile
+  type: string
+  required: false
+  description: 指标口径：auto 自动选择，vllm_prefix 使用缓存查询分母，vllm_prompt 按旧版使用 prompt_tokens
+    分母，ucm_connector 使用 UCM Connector 计数。
+  default: auto
+- name: metrics_policy
+  type: string
+  required: false
+  description: best_effort 保留性能并将缺失命中率写 null；required 要求正式测量的缓存计数完整。预热不因缺失计数阻断。
+  default: best_effort
+- name: metrics_timeout_seconds
+  type: number
+  required: false
+  description: 单次采集超时，大于 0、不超过 30 秒，最多重试一次。
+  default: 5
+- name: settle_seconds
+  type: number
+  required: false
+  description: 预热和测量后等待 0..60 秒，再读取计数，不计入请求耗时。
+  default: 5
+- name: data_source
+  type: string
+  required: false
+  description: random 随机词表生成；corpus 使用已有内置语料生成。
+  default: random
+- name: prefix_mode
+  type: string
+  required: false
+  description: shared 共享前缀池；private 每条请求使用独立预埋前缀。
+  default: shared
+- name: rounds
+  type: array
+  required: false
+  description: 多轮负载覆盖数组，可覆盖 input_len/output_len/data_num/concurrency/request_rate/prefix_num/repeat_rate/dp/seed/test_name/length_*
+    等；CLI 接受 JSON 或文件路径。
+- name: test_name
+  type: string
+  required: false
+  description: 本组测试的名称，写入 CSV 和 JSONL。
+  default: ''
+- name: npu_num
+  type: integer
+  required: false
+  description: 实际卡数，用于吞吐除以卡数；未提供时单卡吞吐为 null。
+- name: warmup_concurrency
+  type: integer
+  required: false
+  description: 预热并发；未给时 shared 按 dp 或前缀数，private 按正式并发。
+- name: warmup_output_len
+  type: integer
+  required: false
+  description: 预热请求输出 token 数，默认 1。
+  default: 1
+- name: length_mean
+  type: integer
+  required: false
+  description: 随机输入长度的高斯均值，与 length_std 成对提供。
+- name: length_std
+  type: number
+  required: false
+  description: 随机输入长度的高斯标准差，可为 0。
+- name: length_min
+  type: integer
+  required: false
+  description: 随机输入长度下限，与 length_max 成对提供。
+- name: length_max
+  type: integer
+  required: false
+  description: 随机输入长度上限；单独设置区间时使用均匀分布。
+- name: thinking
+  type: string
+  required: false
+  description: default 跟随服务；on/off 通过 chat_template_kwargs 指定思考模式。
+  default: default
+- name: monitor_interval_seconds
+  type: number
+  required: false
+  description: 采样服务正在执行的请求数，默认 15 秒；0 关闭采样。
+  default: 15
+env:
+  ENDPOINT_API_KEY:
+    required: false
+    secret: true
+    description: 模型服务的 Bearer token，仅通过环境变量传入。
+  METRICS_API_KEY:
+    required: false
+    secret: true
+    description: 指标接口专用 Bearer token，不与模型密钥混用。
