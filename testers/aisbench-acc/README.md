@@ -2,6 +2,8 @@
 
 给一个已经运行的 OpenAI 兼容模型服务，用 AISBench 做 GSM8K 精度测试。Tester 不启动模型，也不负责开关 UCM。
 
+0.1.4 修复聊天模板返回 `BatchEncoding` 时的本地 token 数补算：取 `input_ids` 的长度，不再把字典字段数当作 token 数。命令参数不变，无需更换 AISBench 镜像。
+
 0.1.3 修复部分 AISBench 3.1 输出对象没有 `data_id` 时记录失败的问题。请同步完整目录，尤其是 `runtime.py`、`testplane_model.py` 和新增的 `testplane_inferencer.py`。执行失败时终端会直接显示原始日志末尾，实际版本检查保持关闭。
 
 `run.sh` 接收参数并启动 `runner.py`。Python 检查数据、生成 AISBench 配置、运行完整推理和评分，最后写 `result.json`。第一版只支持以下两种配置：
@@ -26,7 +28,7 @@
 ```bash
 docker build --platform linux/amd64 \
   -f testers/aisbench-acc/build/Dockerfile \
-  -t ghcr.io/ucm-system/testplane-tester-aisbench-acc:0.1.3 \
+  -t ghcr.io/ucm-system/testplane-tester-aisbench-acc:0.1.4 \
   testers/aisbench-acc
 
 MODEL_DIR=/absolute/path/to/tokenizer DATA_DIR=/absolute/path/to/data \
@@ -73,7 +75,7 @@ run:
   tests:
     - name: accuracy
       tester: aisbench-acc
-      version: "0.1.3"
+      version: "0.1.4"
       execution: {profile: k8s-npu}
       timeout_seconds: 7200
       args: >-
@@ -100,7 +102,7 @@ python -m unittest discover -s testers/aisbench-acc/tests -v
 
 ```bash
 docker run --rm --init --read-only --shm-size=1g --tmpfs /tmp:rw,exec,size=4g \
-  --entrypoint python3 ghcr.io/ucm-system/testplane-tester-aisbench-acc:0.1.3 \
+  --entrypoint python3 ghcr.io/ucm-system/testplane-tester-aisbench-acc:0.1.4 \
   /tester/tests/real_smoke.py
 ```
 

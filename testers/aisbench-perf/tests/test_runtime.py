@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 import asyncio
 import io
+from collections import UserDict
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -23,6 +24,32 @@ class RuntimeTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.path = Path(self.temp.name)
         self.addCleanup(self.temp.cleanup)
+
+    def test_chat_tokens_normalize_lists_mappings_and_single_batches(self):
+        class Tensor:
+            def tolist(self): return [[11, 12, 13]]
+        values = ([11, 12, 13], [[11, 12, 13]],
+                  UserDict(input_ids=[11, 12, 13], attention_mask=[1, 1, 1]),
+                  UserDict(input_ids=Tensor(), attention_mask=Tensor()))
+        for value in values:
+            with self.subTest(value=type(value).__name__):
+                calls = []
+                def apply(messages, **kwargs):
+                    calls.append(kwargs)
+                    return value
+                tokenizer = types.SimpleNamespace(apply_chat_template=apply)
+                result = runtime.chat_token_ids(tokenizer, [{"role": "user", "content": "hello"}], enable_thinking=False)
+                self.assertEqual(result, [11, 12, 13])
+                self.assertFalse(calls[0]["return_dict"])
+                self.assertFalse(calls[0]["enable_thinking"])
+                self.assertTrue(calls[0]["tokenize"])
+
+    def test_chat_tokens_do_not_count_mapping_keys_or_flatten_multiple_requests(self):
+        for value in ({"attention_mask": [1, 1]}, [[1, 2], [3, 4]], ["input_ids", "attention_mask"], [True]):
+            with self.subTest(value=value):
+                tokenizer = types.SimpleNamespace(apply_chat_template=lambda *args, **kwargs: value)
+                with self.assertRaises(runtime.Failure):
+                    runtime.chat_token_ids(tokenizer, [])
 
     def test_urls_keep_prefix_ipv6_and_https(self):
         for url, expected in (("https://example.org/proxy", "https://example.org/proxy/v1"),

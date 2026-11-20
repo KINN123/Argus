@@ -17,6 +17,8 @@ from tokenizers import Tokenizer, models, pre_tokenizers
 from transformers import PreTrainedTokenizerFast
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from runtime import chat_token_ids
 
 
 def main():
@@ -52,7 +54,7 @@ def main():
                     return
                 request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 assert request["model"] == "m"
-                tokens = len(tokenizer.apply_chat_template(request["messages"], tokenize=True, add_generation_prompt=True))
+                tokens = len(chat_token_ids(tokenizer, request["messages"]))
                 count = request["max_tokens"] if request.get("ignore_eos") else 4
                 content = " ".join(["2"] * count) if request.get("ignore_eos") else "The answer is 2"
                 usage = dict(prompt_tokens=tokens, completion_tokens=count, total_tokens=tokens + count)

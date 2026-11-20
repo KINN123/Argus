@@ -5,7 +5,7 @@ No process-global picked_ids file; all random choices belong to this invocation.
 import random
 from pathlib import Path
 
-from runtime import Failure, digest, input_path, jsonl, read_jsonl, select_rows
+from runtime import Failure, chat_token_ids, digest, input_path, jsonl, read_jsonl, select_rows
 
 
 def encode(tokenizer, text):
@@ -44,7 +44,14 @@ def common_prefix(left, right):
 
 
 def chat_tokens(tokenizer, text):
-    return tokenizer.apply_chat_template([{"role": "user", "content": text}], tokenize=True, add_generation_prompt=True)
+    return chat_token_ids(tokenizer, [{"role": "user", "content": text}])
+
+
+def matching_prefix(text, raw_tokens, actual, prefix, prefix_tokens, prefix_chat):
+    if not prefix_tokens or not text.startswith(prefix) or raw_tokens[:len(prefix_tokens)] != prefix_tokens:
+        return None
+    reused = common_prefix(prefix_chat, actual)
+    return reused if reused >= len(prefix_tokens) else None
 
 
 def validate_prefixes(tokenizer, rows, warmup):
@@ -56,13 +63,15 @@ def validate_prefixes(tokenizer, rows, warmup):
         raw_tokens, actual = encode(tokenizer, row["question"]), chat_tokens(tokenizer, row["question"])
         candidates = []
         for prefix_id, (text, tokens, chat) in enumerate(zip(prefixes, prefix_tokens, prefix_chats)):
-            if not tokens or not row["question"].startswith(text) or raw_tokens[:len(tokens)] != tokens:
-                continue
-            reused = common_prefix(chat, actual)
-            if reused >= len(tokens):
+            reused = matching_prefix(row["question"], raw_tokens, actual, text, tokens, chat)
+            if reused is not None:
                 candidates.append((prefix_id, reused))
         if not candidates:
-            raise Failure(f"第 {index} 条数据与预热文件没有匹配的 token 前缀（含聊天模板检查）")
+            text_matches = [i for i, text in enumerate(prefixes) if row["question"].startswith(text)]
+            raw_matches = [i for i in text_matches if prefix_tokens[i] and raw_tokens[:len(prefix_tokens[i])] == prefix_tokens[i]]
+            reason = "文本没有共同前缀" if not text_matches else "裸 token 前缀不一致" if not raw_matches else "; ".join(
+                f"前缀 {i}: 共享聊天 token={common_prefix(prefix_chats[i], actual)}, 要求至少 {len(prefix_tokens[i])}" for i in raw_matches[:3])
+            raise Failure(f"第 {index} 条数据与预热文件没有匹配的 token 前缀：{reason}；数据见 raw/datasets")
         prefix_id, reused = max(candidates, key=lambda item: item[1])
         evidence.append(dict(id=index, prefix_id=prefix_id, shared_chat_tokens=reused, chat_tokens=len(actual)))
     used = {item["prefix_id"] for item in evidence}
@@ -92,6 +101,7 @@ def generate(tokenizer, args, corpus):
         raise Failure("tokenizer 的普通 token 不足 3 个")
     rows = []
     separators = set()
+    prefix_encodings = {prefix: (encode(tokenizer, prefix), chat_tokens(tokenizer, prefix)) for prefix in prefixes}
     for index in range(args.data_num):
         prefix = prefixes[index % len(prefixes)] if prefixes else ""
         if prefix_len == args.input_len:
@@ -106,12 +116,12 @@ def generate(tokenizer, args, corpus):
                     continue
                 suffix = fixed_text(tokenizer, rng.choice(texts), args.input_len - prefix_len - 3 + 16)
                 text = fixed_text(tokenizer, prefix + separator + suffix, args.input_len)
-                prefix_ids = encode(tokenizer, prefix)
-                if text.startswith(prefix) and encode(tokenizer, text)[:len(prefix_ids)] == prefix_ids:
+                prefix_ids, prefix_chat = prefix_encodings[prefix]
+                if matching_prefix(text, encode(tokenizer, text), chat_tokens(tokenizer, text), prefix, prefix_ids, prefix_chat) is not None:
                     separators.add(ids)
                     break
             else:
-                raise Failure("拼接后无法保持指定长度和公共 token 前缀")
+                raise Failure("拼接后无法保持指定长度、裸 token 前缀和聊天 token 前缀")
         if len(encode(tokenizer, text)) != args.input_len:
             raise Failure("生成数据长度不一致")
         rows.append(dict(question=text, answer="none"))
@@ -132,16 +142,16 @@ def prepare_data(args, tokenizer, output):
         corpus = Path(__file__).parent / "data/GSM8K.jsonl"
         rows, warmup = generate(tokenizer, args, corpus)
         evidence["corpus_sha256"] = digest(corpus)
-    if warmup:
-        pairs, prefix_count = validate_prefixes(tokenizer, rows, warmup)
-        evidence["prefix_correspondence"] = pairs
-    else:
-        prefix_count = 0
     for name, data in (("measurement", rows), ("warmup", warmup)):
         if data:
             jsonl(output / "raw/datasets" / name / "test.jsonl", [dict(question=row["question"], answer="none") for row in data])
             jsonl(output / "raw/datasets" / name / "train.jsonl", [dict(question=data[0]["question"], answer="none")])
             evidence[name + "_sha256"] = digest(output / "raw/datasets" / name / "test.jsonl")
+    if warmup:
+        pairs, prefix_count = validate_prefixes(tokenizer, rows, warmup)
+        evidence["prefix_correspondence"] = pairs
+    else:
+        prefix_count = 0
     evidence["token_lengths"] = [dict(id=index, content=len(encode(tokenizer, row["question"])), chat=len(chat_tokens(tokenizer, row["question"]))) for index, row in enumerate(rows)]
-    evidence["generator"] = "prefix-separator3-suffix-v1"
+    evidence["generator"] = "prefix-separator3-suffix-v2"
     return rows, warmup, prefix_count, evidence

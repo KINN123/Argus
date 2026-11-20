@@ -2,6 +2,8 @@
 
 给一个已经运行的 OpenAI 兼容模型服务，在固定输入长度、输出长度和并发下测性能，同时采集 prefix 命中率。它不搜索最大并发，也不启动模型或清缓存。
 
+0.1.4 修复 Transformers 5.2 返回 `BatchEncoding` 时的前缀误判：现在取 `input_ids` 比较 token，不再把两个字典字段当作两个 token。更新完整 Tester 目录后，原来的命令可以继续使用，无需更换 AISBench 镜像。请求记录里的本地 token 数补算也使用同一处理方式。
+
 0.1.3 修复部分 AISBench 3.1 输出对象没有 `data_id` 时记录失败的问题。请同步完整目录，尤其是 `runtime.py`、`testplane_model.py` 和新增的 `testplane_inferencer.py`。预热和正式请求都通过这层传递样本编号；执行失败时终端会显示原始日志末尾。
 
 流程是：准备数据 → 采集计数 → 发前缀预热请求 → 再采计数 → 重新采正式测量前计数 → AISBench 正式压测 → 采集结束计数并计算增量。预热和正式测量分开保存。
@@ -15,7 +17,7 @@
 ```bash
 docker build --platform linux/amd64 \
   -f testers/aisbench-perf/build/Dockerfile \
-  -t ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.3 \
+  -t ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.4 \
   testers/aisbench-perf
 
 MODEL_DIR=/absolute/path/to/tokenizer DATA_DIR=/absolute/path/to/data \
@@ -92,7 +94,7 @@ python -m pip install PyYAML==6.0.2 jsonschema==4.23.0 prometheus-client==0.21.1
 python -m unittest discover -s testers/aisbench-perf/tests -v
 
 docker run --rm --init --read-only --shm-size=1g --tmpfs /tmp:rw,exec,size=4g \
-  --entrypoint python3 ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.3 \
+  --entrypoint python3 ghcr.io/ucm-system/testplane-tester-aisbench-perf:0.1.4 \
   /tester/tests/real_smoke.py
 ```
 
