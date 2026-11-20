@@ -5,12 +5,13 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from collections import UserDict
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import runner
 import runtime
-from dataset_generator import generate, validate_prefixes
+from dataset_generator import generate, validate_prefixes, prepare_data
 from result_mapper import map_performance, statistics
 from test_prefix import snapshot
 
@@ -108,6 +109,42 @@ class PerformanceTests(unittest.TestCase):
         self.assertEqual(prefixes, 2)
         self.assertTrue(all(item["shared_chat_tokens"] >= 15 for item in evidence))
         self.assertFalse((self.path / "picked_ids.txt").exists())
+
+    def test_user_load_generates_and_validates_when_chat_template_returns_mapping(self):
+        class MappingChat(CharTokenizer):
+            def apply_chat_template(self, messages, **kwargs):
+                ids = super().apply_chat_template(messages, **kwargs)
+                return UserDict(input_ids=ids, attention_mask=[1] * len(ids))
+        args = runner.parser().parse_args(self.base + ["--input_len=256", "--output_len=32", "--data_num=16",
+                                                      "--concurrency=2", "--prefix_num=1", "--repeat_rate=50%"])
+        runner.validate(args)
+        rows, warmup, count, evidence = prepare_data(args, MappingChat(), self.path / "generated")
+        self.assertEqual((len(rows), len(warmup), count), (16, 1, 1))
+        self.assertTrue(all(item["content"] == 256 and item["chat"] > 256 for item in evidence["token_lengths"]))
+        self.assertTrue(all(item["shared_chat_tokens"] >= 128 for item in evidence["prefix_correspondence"]))
+
+    def test_generator_does_not_emit_prefixes_rejected_by_chat_validation(self):
+        class LengthHeader(CharTokenizer):
+            def apply_chat_template(self, messages, **kwargs):
+                return self.encode(str(len(messages[0]["content"])) + ":" + messages[0]["content"])
+        args = runner.parser().parse_args(self.base + ["--input_len=30", "--data_num=1"])
+        runner.validate(args)
+        corpus = self.path / "corpus.jsonl"
+        runtime.jsonl(corpus, [dict(question="A long first document with data.")])
+        with self.assertRaises(runtime.Failure):
+            generate(LengthHeader(), args, corpus)
+
+    def test_invalid_supplied_prefix_keeps_staged_data_for_diagnosis(self):
+        data, warmup = self.path / "data.jsonl", self.path / "warmup.jsonl"
+        runtime.jsonl(data, [dict(question="unrelated question")])
+        runtime.jsonl(warmup, [dict(question="prefix")])
+        args = runner.parser().parse_args(self.base + [f"--dataset={data}", f"--warmup_dataset={warmup}"])
+        runner.validate(args)
+        output = self.path / "staged"
+        with self.assertRaises(runtime.Failure):
+            prepare_data(args, CharTokenizer(), output)
+        self.assertTrue((output / "raw/datasets/measurement/test.jsonl").is_file())
+        self.assertTrue((output / "raw/datasets/warmup/test.jsonl").is_file())
 
     def test_ratio_zero_one_and_insufficient_suffix(self):
         corpus = self.path / "corpus.jsonl"

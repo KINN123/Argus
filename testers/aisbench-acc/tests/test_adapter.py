@@ -120,6 +120,15 @@ class AdapterTests(unittest.TestCase):
         self.assertFalse(self.record(0)["success"])
         self.assertIn("HTTP 400", self.record(0)["error"])
 
+    def test_token_count_fallback_uses_input_ids_instead_of_mapping_keys(self):
+        self.chat._tp_tokenizer = types.SimpleNamespace(apply_chat_template=lambda *args, **kwargs:
+                                                       {"input_ids": list(range(23)), "attention_mask": [1] * 23})
+        output = legacy_output("answer")
+        output.data_id = 0
+        output.input_tokens = 0
+        asyncio.run(self.chat.generate("question", 8, output))
+        self.assertEqual(self.record(0)["input_tokens"], 23)
+
     def test_request_exception_survives_and_context_is_restored(self):
         async def run():
             marker = self.adapter.REQUEST_INDEX.set(99)

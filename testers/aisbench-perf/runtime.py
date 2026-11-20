@@ -4,11 +4,13 @@ from __future__ import annotations
 import argparse
 import ast
 from collections import deque
+from collections.abc import Mapping
 import hashlib
 import importlib.metadata
 import json
 import math
 import os
+from numbers import Integral
 from pathlib import Path
 import signal
 import subprocess
@@ -17,7 +19,7 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 HERE = Path(__file__).resolve().parent
 MODEL = "testplane-model"
 DATA = "testplane-data"
@@ -193,6 +195,22 @@ def tokenizer_info(path):
     files = {str(p.relative_to(path)): digest(p) for p in sorted(path.rglob("*"))
              if p.is_file() and (p.name.startswith(("tokenizer", "vocab", "merges", "special_tokens", "added_tokens", "chat_template")) or p.name in ("config.json", "generation_config.json"))}
     return tokenizer, files
+
+
+def chat_token_ids(tokenizer, messages, **template_kwargs):
+    options = dict(template_kwargs, tokenize=True, add_generation_prompt=True, return_dict=False)
+    value = tokenizer.apply_chat_template(messages, **options)
+    if isinstance(value, Mapping):
+        if "input_ids" not in value:
+            raise Failure("聊天模板返回的字典缺少 input_ids")
+        value = value["input_ids"]
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    if isinstance(value, (list, tuple)) and len(value) == 1 and isinstance(value[0], (list, tuple)):
+        value = value[0]
+    if not isinstance(value, (list, tuple)) or any(not isinstance(token, Integral) or isinstance(token, bool) for token in value):
+        raise Failure("聊天模板必须返回单条输入的整数 token ID 列表")
+    return [int(token) for token in value]
 
 
 def aisbench_info():

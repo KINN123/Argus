@@ -7,7 +7,7 @@ from contextvars import ContextVar
 
 from ais_bench.benchmark.models import VLLMCustomAPIChat
 
-from runtime import redact, tokenizer_info
+from runtime import chat_token_ids, redact, tokenizer_info
 
 REQUEST_INDEX = ContextVar("testplane_request_index", default=None)
 
@@ -57,7 +57,7 @@ class Chat(VLLMCustomAPIChat):
                 self._tp_tokenizer, _ = tokenizer_info(Path(self.path))
             if output.input_tokens <= 0:
                 template_kwargs = body.get("chat_template_kwargs", {})
-                output.input_tokens = len(self._tp_tokenizer.apply_chat_template(body["messages"], tokenize=True, add_generation_prompt=True, **template_kwargs))
+                output.input_tokens = len(chat_token_ids(self._tp_tokenizer, body["messages"], **template_kwargs))
             if output.output_tokens <= 0:
                 output.output_tokens = len(self._tp_tokenizer.encode(prediction, add_special_tokens=False))
             source = "usage_or_local_tokenizer"
