@@ -43,6 +43,7 @@ class RuntimeTests(unittest.TestCase):
         tree = ast.parse(target.read_text())
         values = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body}
         self.assertEqual(values["models"][0]["model"], injected)
+        self.assertEqual(values["datasets"][0]["infer_cfg"]["inferencer"]["type"], "testplane_inferencer.GenInferencer")
         self.assertFalse(values["models"][0]["generation_kwargs"]["ignore_eos"])
         self.assertNotIn("unique-model-key", target.read_text())
         self.assertNotIn("api_key", values["models"][0])
@@ -118,9 +119,24 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn("METRICS_API_KEY", popen.call_args.kwargs["env"])
         self.assertNotIn("redact-this-key", (self.path / "raw/run/aisbench.log").read_text())
 
+    def test_failed_result_displays_child_traceback_even_when_cli_exited_zero(self):
+        with patch.dict(os.environ, {"TESTPLANE_OUTPUT_DIR": str(self.path), "ENDPOINT_API_KEY": "secret-value"}):
+            execution = runtime.Execution("test")
+            execution.prepare()
+            directory = self.path / "raw/round-1"
+            directory.mkdir()
+            (directory / "aisbench.log").write_text("Traceback: AttributeError from child; secret-value\n", encoding="utf-8")
+            execution.last_aisbench_directory = directory
+            with patch("sys.stdout", new=io.StringIO()) as output:
+                code = execution.finish(runtime.Failure("incomplete requests", "incomplete_requests", 1))
+            self.assertEqual(code, 1)
+            self.assertIn("AttributeError from child", output.getvalue())
+            self.assertIn(str(directory / "aisbench.log"), output.getvalue())
+            self.assertNotIn("secret-value", output.getvalue())
+
     def test_independent_images_use_identical_runtime(self):
         sibling = ROOT.parent / ("aisbench-perf" if ROOT.name == "aisbench-acc" else "aisbench-acc")
-        for file in ("runtime.py", "testplane_model.py", "build/requirements.txt", "build/aisbench-lock.json"):
+        for file in ("runtime.py", "testplane_model.py", "testplane_inferencer.py", "build/requirements.txt", "build/aisbench-lock.json"):
             self.assertEqual((ROOT / file).read_bytes(), (sibling / file).read_bytes(), file)
 
     def test_manifest_matches_cli(self):
