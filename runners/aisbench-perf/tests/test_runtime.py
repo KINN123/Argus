@@ -163,7 +163,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_independent_images_use_identical_runtime(self):
         sibling = ROOT.parent / ("aisbench-perf" if ROOT.name == "aisbench-acc" else "aisbench-acc")
-        for file in ("runtime.py", "testplane_model.py", "testplane_inferencer.py", "build/requirements.txt", "build/aisbench-lock.json"):
+        for file in ("runtime.py", "native_suite.py", "testplane_model.py", "testplane_inferencer.py", "build/requirements.txt", "build/aisbench-lock.json"):
             self.assertEqual((ROOT / file).read_bytes(), (sibling / file).read_bytes(), file)
 
     def test_manifest_matches_cli(self):

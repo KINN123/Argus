@@ -1,5 +1,7 @@
 # AISBench 旧实现迁移（0.2.0）
 
+后续 0.3.0 增加 Jenkins 原生精度、普通性能和六列 prefix 用例入口，见 [Jenkins 迁移说明](aisbench-jenkins-migration.md)。下文保留 0.2.0 的迁移依据。
+
 覆盖范围：把用户提供的 reference 两套性能脚本迁入现有 AISBench 精度、性能 Runner，支持当前平台输入和结果契约。服务部署、启停 UCM、清空服务缓存仍由环境负责；不修改平台状态机、数据表或 API。
 
 ## 旧实现实际做了什么

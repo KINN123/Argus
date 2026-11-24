@@ -134,13 +134,17 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
 
     def test_rounds_override_and_keep_reports_separate(self):
-        code, result, output, calls = self.execute(extra=['--rounds=[{"input_len":40,"seed":4},{"input_len":48,"seed":5}]'])
+        code, result, output, calls = self.execute(extra=['--rounds=[{"input_len":40,"seed":4},{"input_len":48,"seed":5}]', '--extra_info={"tag":"jenkins"}'])
         self.assertEqual(code, 0)
         self.assertEqual([c["input_len"] for c in calls], [40, 40, 48, 48])
         rows = [json.loads(line) for line in (output / "prefix_bench_result.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertEqual([r["round"] for r in rows], [1, 1, 2, 2])
         self.assertEqual({m["labels"]["round"] for m in result["metrics"]}, {1, 2})
         self.assertEqual(len(result["metadata"]["groups"]), 2)
+        legacy = json.loads((output / "legacy_results.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(legacy), 2)
+        self.assertTrue(all(r["type"] == "prefix" and r["status"] == "SUCCESS" for r in legacy))
+        self.assertTrue(all(r["extra_info"] == {"tag": "jenkins"} for r in legacy))
 
     def test_request_failure_is_recorded_in_flat_report(self):
         code, result, output, calls = self.execute(fail=True)

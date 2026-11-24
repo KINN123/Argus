@@ -14,5 +14,5 @@ exec docker run --rm --init --read-only --user "$(id -u):$(id -g)" \
   -v "$OUTPUT_DIR:/workspace/output" \
   -v "$MODEL_DIR:/models/model:ro" -v "$DATA_DIR:/data:ro" \
   -e ENDPOINT_API_KEY -e METRICS_API_KEY \
-  "${TESTER_IMAGE:-ghcr.io/ucm-system/argus-runner-aisbench-perf:0.2.0}" \
+  "${TESTER_IMAGE:-ghcr.io/ucm-system/argus-runner-aisbench-perf:0.3.0}" \
   --model_path=/models/model "$@"

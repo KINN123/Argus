@@ -6,12 +6,14 @@ from runtime import (Failure, Parser, dump, input_path, integer, jsonl, number,
                      official_template, public_args, read_jsonl, run_main,
                      select_rows, tokenizer_info, aisbench_info, digest)
 from result_mapper import map_accuracy
+import native_suite
 
 
 def parser():
-    p = Parser(description="AISBench GSM8K 精度测试", allow_abbrev=False)
+    p = Parser(description="AISBench 精度测试：原生数据集配置或 GSM8K JSONL", allow_abbrev=False)
     public_args(p)
-    p.add_argument("--dataset", required=True)
+    native_suite.arguments(p)
+    p.add_argument("--dataset")
     p.add_argument("--dataset_config", choices=("gsm8k_4shot_cot", "gsm8k_jsonl_0shot"), default="gsm8k_4shot_cot")
     p.add_argument("--max_samples", type=integer(0), default=0)
     p.add_argument("--output_len", type=integer(), default=1024)
@@ -52,6 +54,11 @@ def prepare_data(args, output):
 
 
 def work(execution, args):
+    if args.datasets:
+        return native_suite.work(execution, args)
+    native_suite.reject_native_only(args)
+    if not args.dataset:
+        raise Failure("请提供 datasets（AISBench 配置名）或 dataset（GSM8K 数据路径）")
     data, rows, evidence = prepare_data(args, execution.output)
     versions = aisbench_info()
     execution.result["metadata"].update(versions)
