@@ -19,7 +19,7 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 HERE = Path(__file__).resolve().parent
 MODEL = "testplane-model"
 DATA = "testplane-data"
@@ -325,14 +325,21 @@ class Execution:
                    "--num-warmups", "0", "--max-num-workers", "1", "--debug"]
         if not perf:
             command.append("--dump-eval-details")
+        return self.run_command(directory, command, cwd=directory, audit=audit)
+
+    def run_command(self, directory, command, cwd, audit=None):
+        self.last_aisbench_directory = directory
         environment = dict(os.environ, PYTHONPATH=str(HERE) + os.pathsep + os.environ.get("PYTHONPATH", ""),
-                           TESTPLANE_AUDIT_DIR=str(audit), PYTHONUNBUFFERED="1", HF_HUB_OFFLINE="1", HF_DATASETS_OFFLINE="1")
+                           PYTHONUNBUFFERED="1", HF_HUB_OFFLINE="1", HF_DATASETS_OFFLINE="1")
+        environment.pop("TESTPLANE_AUDIT_DIR", None)
+        if audit is not None:
+            environment["TESTPLANE_AUDIT_DIR"] = str(audit)
         # Metrics credentials have no purpose in the AISBench process.
         environment.pop("METRICS_API_KEY", None)
         started_at = now()
         self.log(f"启动 AISBench：{directory.relative_to(self.output)}")
         with (directory / "aisbench.log").open("w", encoding="utf-8") as log:
-            self.child = subprocess.Popen(command, cwd=directory, env=environment, stdout=subprocess.PIPE,
+            self.child = subprocess.Popen(command, cwd=cwd, env=environment, stdout=subprocess.PIPE,
                                           stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
                                           start_new_session=os.name == "posix")
             try:
@@ -342,7 +349,8 @@ class Execution:
                 code = self.child.wait()
             finally:
                 self.child.stdout.close()
-        dump(directory / "execution.json", dict(started_at=started_at, finished_at=now(), returncode=code))
+        dump(directory / "execution.json", dict(started_at=started_at, finished_at=now(), returncode=code,
+                                                command=command, cwd=str(cwd)))
         self.child = None
         return code
 

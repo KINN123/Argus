@@ -2,6 +2,7 @@
 import hashlib
 import copy
 import argparse
+import csv
 import json
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -12,6 +13,7 @@ from prefix_metrics import capture, compare, require_valid, settle, choose_profi
 from result_mapper import map_performance
 from reports import write_reports
 from running_monitor import RunningMonitor
+import native_suite
 
 
 def ratio(value):
@@ -24,6 +26,9 @@ def ratio(value):
 def parser():
     p = Parser(description="AISBench 性能与 prefix 命中率测试", allow_abbrev=False)
     public_args(p)
+    native_suite.arguments(p)
+    p.add_argument("--temperature", type=number(0, 2), default=0)
+    p.add_argument("--test_cases", help="旧 Jenkins 六列用例 JSON 数组")
     p.add_argument("--dataset_type", choices=("normal", "prefix_cache"), default="prefix_cache")
     p.add_argument("--dataset")
     p.add_argument("--warmup_dataset")
@@ -101,6 +106,28 @@ def validate(args):
 
 
 def work(execution, args):
+    if args.datasets:
+        return native_suite.work(execution, args, perf=True)
+    native_suite.reject_native_only(args, allow_extra=True)
+    if "--temperature" in args.explicit:
+        raise Failure("temperature 目前只用于 datasets 原生性能测试")
+    if args.test_cases:
+        args = legacy_cases(args)
+    failed = True
+    try:
+        result = work_prefix(execution, args)
+        failed = False
+        return result
+    finally:
+        if execution is not None:
+            report = execution.output / "hit_rate.csv"
+            if report.is_file():
+                with report.open(encoding="utf-8", newline="") as handle:
+                    rows = list(csv.DictReader(handle))
+                native_suite.legacy_results(execution, args, rows, "prefix", failed)
+
+
+def work_prefix(execution, args):
     if not args.rounds:
         return work_round(execution, args)
     try:
@@ -148,6 +175,35 @@ def work(execution, args):
         execution.result["metadata"]["metrics_complete"] = all(s.get("metrics_complete", False) for s in summaries)
         from reports import merge_reports
         merge_reports(root)
+
+
+def legacy_cases(args):
+    conflicts = args.explicit & {"--rounds", "--dataset", "--warmup_dataset", "--input_len", "--output_len",
+                                  "--data_num", "--repeat_rate", "--prefix_num", "--prefix_mode", "--data_source",
+                                  "--concurrency", "--seed", "--warmup_concurrency", "--warmup_output_len",
+                                  "--length_mean", "--length_std", "--length_min", "--length_max", "--dataset_type", "--prefix_test"}
+    if conflicts:
+        raise Failure("test_cases 已定义负载，不要同时指定：" + ", ".join(sorted(conflicts)))
+    try:
+        cases = json.loads(args.test_cases)
+    except ValueError as exc:
+        raise Failure(f"test_cases JSON 无效：{exc}") from exc
+    if not isinstance(cases, list) or not cases:
+        raise Failure("test_cases 必须是非空六列数组")
+    rounds = []
+    for case in cases:
+        if not isinstance(case, list) or len(case) != 6 or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in case):
+            raise Failure("test_cases 每项为 [input_len, output_len, num_requests, hit_rate百分数, concurrency, seed]")
+        i, o, n, rate, c, seed = case
+        if not 0 <= rate <= 100 or any(not isinstance(v, int) for v in (i, o, n, c, seed)):
+            raise Failure("test_cases 长度、数量、并发和 seed 必须是整数；hit_rate 在 0..100 之间")
+        rounds.append(dict(input_len=i, output_len=o, data_num=n, repeat_rate=f"{rate}%", concurrency=c,
+                           seed=seed, prefix_mode="private", warmup_concurrency=c, warmup_output_len=max(1, o // 10)))
+    args = copy.deepcopy(args)
+    args.rounds = json.dumps(rounds)
+    if "--metrics_profile" not in args.explicit:
+        args.metrics_profile = "vllm_prompt"
+    return args
 
 
 def work_round(execution, args):

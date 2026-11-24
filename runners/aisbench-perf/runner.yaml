@@ -1,13 +1,13 @@
 name: aisbench-perf
-version: 0.2.0
+version: 0.3.0
 display_name: AISBench 性能与 prefix 命中率
-description: 固定负载的性能测试，按 prefix 工具方法先预热再测量。采集稳定实例的缓存计数，区分 HBM、UCM 与 external 的分母。
+description: AISBench 原生数据集性能测试、生成数据压测与 prefix 命中率测试；兼容旧 Jenkins 六列用例。
 role: test
 on_failure: continue
 entry:
 - /runner/run.sh
 input_format: jsonl
-image: ghcr.io/ucm-system/argus-runner-aisbench-perf:0.2.0
+image: ghcr.io/ucm-system/argus-runner-aisbench-perf:0.3.0
 resources:
   cpu: '4'
   memory: 8Gi
@@ -184,6 +184,46 @@ parameters:
   required: false
   description: 采样服务正在执行的请求数，默认 15 秒；0 关闭采样。
   default: 15
+- name: datasets
+  type: array
+  required: false
+  description: AISBench 配置名列表，例如 ["gsm8k_gen_4_shot_cot_str"]；与 dataset 互斥。CLI 可用逗号分隔。
+- name: config_dir
+  type: string
+  required: false
+  description: 原生路径：配置根目录，包含 datasets/summarizers 子目录；默认使用容器内配置。
+- name: working_dir
+  type: string
+  required: false
+  description: 原生路径：AISBench 的工作目录，默认调用者当前目录。
+- name: num_prompts
+  type: integer
+  required: false
+  description: 原生路径：每个数据集最多测试样本数；0 使用全部。
+  default: 0
+- name: num_warmups
+  type: integer
+  required: false
+  description: 原生路径：AISBench 预热请求数；默认 0。
+  default: 0
+- name: ignore_eos
+  type: boolean
+  required: false
+  description: 原生路径：是否忽略 EOS；未给时按旧 Jenkins 使用 true。
+- name: extra_info
+  type: string
+  required: false
+  description: 附加信息，可填 JSON 字符串或普通文字；原生测试和 prefix 报告写入 legacy_results.json。
+  default: ''
+- name: test_cases
+  type: array
+  required: false
+  description: 旧 Jenkins 六列数组：[input_len,output_len,num_requests,hit_rate百分数,concurrency,seed]；按私有前缀运行。
+- name: temperature
+  type: number
+  required: false
+  description: 原生 datasets 路径：温度，未明确设置时按旧 Jenkins 使用 0.01。
+  default: 0
 env:
   ENDPOINT_API_KEY:
     required: false

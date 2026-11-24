@@ -12,6 +12,8 @@
     "aisbench_auto_tools_prefix/hit_rate_collector.py": "9c6353bc9b3a02b69fbb4b1f07d2bef67f3650263051fcd9a1aca9a3671ba9f2",
     "aisbench_auto_tools_prefix/prefix_bench.py": "ecb2a9c8cb1c1bb8d9afc30e8d31441a3fdf222d0671f32d2471228cb1d1bd01",
     "aisbench_auto_tools_prefix/README.md": "f1be541bb4d56d90bfe35fcb08d2eaa0063cc100f7ac1ce7fe440811bddb85c3",
-    "aisbench_auto_tools_prefix/result_writer.py": "8c1d8fa2c9f6628ccb2f3a521703b4a9adec9d2078a16345bc0b91fedddc7c73"
-  }
+    "aisbench_auto_tools_prefix/result_writer.py": "8c1d8fa2c9f6628ccb2f3a521703b4a9adec9d2078a16345bc0b91fedddc7c73",
+    "K8s-AISBench-Test.Jenkinsfile": "5a00da97464a8422b3bd78eaf2f8178e120128e53b6cb2a5fdd9292f3671e175"
+  },
+  "jenkins_read_date": "2026-11-24"
 }

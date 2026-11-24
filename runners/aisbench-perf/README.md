@@ -1,10 +1,53 @@
-# AISBench 性能和前缀缓存测试（0.2.0）
+# AISBench 性能和前缀缓存测试（0.3.0）
 
 对已经运行的模型服务准备数据、预热、压测，再汇总性能和缓存命中率。实现从用户提供的 reference 两套脚本迁移而来。模型服务、UCM 和清缓存由环境负责。
 
 正式实现放在 runners/aisbench-perf；旧入口 testers/aisbench-perf/run.sh 会转发到这里。直接用当前 AISBench 环境，不检查固定版本、源码哈希或内部文件清单。
 
 ## 在现有容器中运行
+
+有三种输入：`datasets` 跑旧 Jenkins 的普通性能测试；`test_cases` 跑旧 Jenkins 的 prefix 六列用例；不指定这两项时沿用下面的共享前缀测试。
+
+普通性能测试（配置名、数据路径沿用你的 AISBench 环境）：
+
+```bash
+OUT="/tmp/perf-$(date +%Y%m%d-%H%M%S)-$$"
+TESTPLANE_OUTPUT_DIR="$OUT" sh testers/aisbench-perf/run.sh \
+  --url=http://127.0.0.1:7800/v1 --model_name=qwen25 \
+  --model_path=/models/Qwen2.5-7B-Instruct/ \
+  --datasets=gsm8k_gen_4_shot_cot_str --working_dir=/benchmark/ais_bench \
+  --num_prompts=16 --num_warmups=0 --output_len=32 --concurrency=2 \
+  --temperature=0.01 --ignore_eos=true
+cat "$OUT/performance_flat.csv"
+```
+
+旧 Jenkins 的 prefix 测试：
+
+```bash
+OUT="/tmp/prefix-$(date +%Y%m%d-%H%M%S)-$$"
+TESTPLANE_OUTPUT_DIR="$OUT" sh testers/aisbench-perf/run.sh \
+  --url=http://127.0.0.1:7800/v1 --model_name=qwen25 \
+  --model_path=/models/Qwen2.5-7B-Instruct/ \
+  --test_cases='[[256,32,16,50,2,1]]' \
+  --metrics_profile=vllm_prefix \
+  --metrics_endpoint=http://127.0.0.1:7800/metrics
+cat "$OUT/hit_rate.csv"
+```
+
+六列依次是输入长度、输出长度、请求数、前缀百分比、并发、seed。自动用 private 前缀、正式并发预热、max(1, output_len//10) 预热输出长度，默认 vllm_prompt 口径。如果服务只暴露 prefix_cache_queries_total，没有 prompt_tokens_total，可明确加 `--metrics_profile=vllm_prefix`；报告会注明口径变化。缺失指标按 best_effort 留空，不阻断压测。
+
+`datasets` 路径直接调用 `--mode perf --summarizer default_perf`，不额外做 prefix 预热和指标采集；输出 `performance_flat.csv`、`legacy_results.json`、`result.json`，原始输出在 `raw/native/`。展开表沿用旧 label_statistic 列名，额外 source 列区分多个数据集；保留负号和科学计数法的真实数值。请求计数从相邻性能 JSON 核对，失败请求不会冒充完整成绩。
+
+平台对应 JSONL：
+
+```json
+{"datasets":["gsm8k_gen_4_shot_cot_str"],"num_prompts":16,"num_warmups":0,"output_len":32,"concurrency":2,"ignore_eos":true}
+{"test_cases":[[256,32,16,50,2,1]],"metrics_profile":"vllm_prefix"}
+```
+
+`config_dir` 可指定共享配置根目录；`extra_info` 给结果附加文字或 JSON 字符串，prefix 也导出 legacy_results.json。`datasets`、`test_cases`、`rounds` 三种入口不要混用。原生路径 num_prompts 控制条数，生成数据路径用 data_num。Jenkins 的镜像、NFS、节点和 MongoDB 操作由平台部署与制品收集接替；Runner 不写 MongoDB。
+
+## 共享前缀测试
 
 从项目根目录执行：
 
@@ -47,7 +90,7 @@ repeat_rate 是目标前缀长度占比，不保证真实命中率。预热输�
 --rounds='[{"input_len":256,"concurrency":2,"seed":1,"test_name":"small"},{"input_len":512,"concurrency":4,"seed":2,"test_name":"large"}]'
 ```
 
-rounds 也接受 JSON 文件路径，替代旧版 test-cases 的位置数组。repeat=2 表示同组数据重复测量，不清缓存。不同组用不同 seed 可减少意外复用，但不承诺绝对无碰撞。seed=0 使用系统熵并记录实际 seed，非零可复现。
+rounds 也接受 JSON 文件路径，是带名字的参数覆盖；旧位置数组可直接用 test_cases。repeat=2 表示同组数据重复测量，不清缓存。不同组用不同 seed 可减少意外复用，但不承诺绝对无碰撞。seed=0 使用系统熵并记录实际 seed，非零可复现。
 
 随机变长：length_min/length_max 成对给出时均匀采样；length_mean/length_std 成对给出时高斯采样，可加上下限。每条数据对应实际长度的预热前缀。
 
@@ -82,7 +125,7 @@ rounds 各组放 groups/N，根目录汇总表格；平台多行参数放 cases/
 
 ```bash
 docker build -f runners/aisbench-perf/build/Dockerfile \
-  -t ghcr.io/ucm-system/argus-runner-aisbench-perf:0.2.0 runners/aisbench-perf
+  -t ghcr.io/ucm-system/argus-runner-aisbench-perf:0.3.0 runners/aisbench-perf
 python -m unittest discover -s runners/aisbench-perf/tests
 # 在已有 AISBench 环境里，用模拟服务验证真实调用链：
 python3 runners/aisbench-perf/tests/real_smoke.py
@@ -90,4 +133,4 @@ python3 runners/aisbench-perf/tests/real_smoke.py
 
 构建基线固定依赖，但用户现有镜像不必安装它们才能运行。镜像尚需构建和发布。离线验证使用模拟 tokenizer/请求，不能代替真实 AISBench 3.1 和 UCM 验收。
 
-设计见 [迁移说明](../../design/impl/aisbench-reference-migration.md)，源文件校验值见 [reference-sources.json](reference-sources.json)。
+设计见 [Jenkins 迁移说明](../../design/impl/aisbench-jenkins-migration.md) 和 [已有迁移说明](../../design/impl/aisbench-reference-migration.md)，源文件校验值见 [reference-sources.json](reference-sources.json)。
