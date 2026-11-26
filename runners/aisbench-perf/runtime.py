@@ -19,7 +19,7 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 HERE = Path(__file__).resolve().parent
 MODEL = "testplane-model"
 DATA = "testplane-data"

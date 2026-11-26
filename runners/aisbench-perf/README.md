@@ -1,4 +1,4 @@
-# AISBench 性能和前缀缓存测试（0.3.0）
+# AISBench 性能和前缀缓存测试（0.3.1）
 
 对已经运行的模型服务准备数据、预热、压测，再汇总性能和缓存命中率。实现从用户提供的 reference 两套脚本迁移而来。模型服务、UCM 和清缓存由环境负责。
 
@@ -12,6 +12,7 @@
 
 ```bash
 OUT="/tmp/perf-$(date +%Y%m%d-%H%M%S)-$$"
+export AIS_BENCH_DATASETS_CACHE=/benchmark
 TESTPLANE_OUTPUT_DIR="$OUT" sh testers/aisbench-perf/run.sh \
   --url=http://127.0.0.1:7800/v1 --model_name=qwen25 \
   --model_path=/models/Qwen2.5-7B-Instruct/ \
@@ -46,6 +47,8 @@ cat "$OUT/hit_rate.csv"
 ```
 
 `config_dir` 可指定共享配置根目录；`extra_info` 给结果附加文字或 JSON 字符串，prefix 也导出 legacy_results.json。`datasets`、`test_cases`、`rounds` 三种入口不要混用。原生路径 num_prompts 控制条数，生成数据路径用 data_num。Jenkins 的镜像、NFS、节点和 MongoDB 操作由平台部署与制品收集接替；Runner 不写 MongoDB。
+
+平台将数据集挂到 `/benchmark/ais_bench/datasets`，下级目录如 `gsm8k/`。镜像设置 `AIS_BENCH_DATASETS_CACHE=/benchmark`，使原生配置中的 `ais_bench/datasets/...` 找到该挂载；已有容器直接运行时按上例 export。`working_dir` 不能替代这个数据根目录。run-local.sh 将 DATA_DIR 同时挂到固定路径和 /data，原生模式应传包含各数据集子目录的根目录。随机生成 prefix 数据时不依赖这个挂载。
 
 ## 共享前缀测试
 
@@ -125,7 +128,7 @@ rounds 各组放 groups/N，根目录汇总表格；平台多行参数放 cases/
 
 ```bash
 docker build -f runners/aisbench-perf/build/Dockerfile \
-  -t ghcr.io/ucm-system/argus-runner-aisbench-perf:0.3.0 runners/aisbench-perf
+  -t ghcr.io/ucm-system/argus-runner-aisbench-perf:0.3.1 runners/aisbench-perf
 python -m unittest discover -s runners/aisbench-perf/tests
 # 在已有 AISBench 环境里，用模拟服务验证真实调用链：
 python3 runners/aisbench-perf/tests/real_smoke.py

@@ -1,4 +1,4 @@
-# AISBench 精度测试（0.3.0）
+# AISBench 精度测试（0.3.1）
 
 对已经运行的模型服务做精度测试。`datasets` 使用容器里的 AISBench 数据集配置和原评分器；`dataset` 保留原有 GSM8K 逐题审计。模型与 UCM 由环境负责。
 
@@ -10,6 +10,7 @@
 
 ```bash
 OUT="/tmp/acc-$(date +%Y%m%d-%H%M%S)-$$"
+export AIS_BENCH_DATASETS_CACHE=/benchmark
 TESTPLANE_OUTPUT_DIR="$OUT" sh testers/aisbench-acc/run.sh \
   --url=http://127.0.0.1:7800/v1 --model_name=qwen25 \
   --model_path=/models/Qwen2.5-7B-Instruct/ \
@@ -23,7 +24,7 @@ cat "$OUT/result.json"
 
 `datasets` 填旧 AISBENCH_DATASETS 的配置名，多项用逗号分隔。可测的数据集以你镜像中的配置和数据为准；例如 GSM8K、MMLU、C-Eval 的生成式配置，不把所有数据集当作数学题评分。配置列表可在容器运行 `ais_bench --datasets gsm8k --search` 查看；实际运行填写完整匹配的名字。
 
-原来的配置放在共享目录时，加 `--config_dir=/mnt/private/dataset/aisbench_configs`。数据文件路径沿用该配置；`working_dir` 只影响相对路径，不会替你挂载或下载数据。这个路径调用 `--mode all --merge-ds --summarizer example`，保留原模型配置的回答后处理。
+原来的配置放在共享目录时，加 `--config_dir=/mnt/private/dataset/aisbench_configs`。平台将数据集根目录挂到 `/benchmark/ais_bench/datasets`，例如其下包含 `gsm8k/train.jsonl` 和 `gsm8k/test.jsonl`。Runner 镜像设置 `AIS_BENCH_DATASETS_CACHE=/benchmark`，对应配置里的 `ais_bench/datasets/gsm8k`；已有容器直接运行时按上例 export。`working_dir` 只设置工作目录，不能替代数据根目录配置。自定义配置的绝对路径需要与实际挂载一致。这个路径调用 `--mode all --merge-ds --summarizer example`，保留原模型配置的回答后处理。
 
 `accuracy.csv` 保留 AISBench 汇总列和成绩文本，`legacy_results.json` 保留旧 build/type/status/data/extra_info 结构，build 改用平台 task_id。原始 CSV、预测文件、日志在 `raw/native/`，`result.json` 保存平台成绩与文件索引。多数据集各有自己的分数，不拼成一个准确率。原生路径依赖 AISBench 执行和汇总判定，不提供下面 GSM8K 路径的逐题审计保证。
 
@@ -59,13 +60,13 @@ GSM8K 路径的结果包含 result.json、raw/resolved.json、raw/dataset，以�
 
 ```bash
 docker build -f runners/aisbench-acc/build/Dockerfile \
-  -t ghcr.io/ucm-system/argus-runner-aisbench-acc:0.3.0 runners/aisbench-acc
+  -t ghcr.io/ucm-system/argus-runner-aisbench-acc:0.3.1 runners/aisbench-acc
 python -m unittest discover -s runners/aisbench-acc/tests
 # 在已有 AISBench 环境，用模拟服务检查真实调用链：
 python3 runners/aisbench-acc/tests/real_smoke.py
 ```
 
-run-local.sh 支持 MODEL_DIR、DATA_DIR、OUTPUT_DIR、TESTER_IMAGE。源码锁只描述构建基线，不在运行前校验。离线测试不能替代真实模型/UCM 验收。比较 UCM 开关前后精度时，应保持模型、题目和生成参数相同。
+run-local.sh 支持 MODEL_DIR、DATA_DIR、OUTPUT_DIR、TESTER_IMAGE。DATA_DIR 同时挂到 /benchmark/ais_bench/datasets 和兼容路径 /data；原生 datasets 模式应指向包含 gsm8k 等子目录的数据集根目录。源码锁只描述构建基线，不在运行前校验。离线测试不能替代真实模型/UCM 验收。比较 UCM 开关前后精度时，应保持模型、题目和生成参数相同。
 
 `dataset` 与 `datasets` 互斥；原生路径使用 num_prompts，GSM8K 路径使用 max_samples，不能混传。extra_info 仅用于原生路径，可填 JSON 字符串或普通文字。平台重启 argusd 后扫描注册新版本；使用平台前需构建和发布 runner.yaml 指向的镜像。
 
