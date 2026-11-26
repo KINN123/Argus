@@ -8,6 +8,8 @@
 
 2026-11-26 挂载约定（0.3.1）：平台将数据集根目录挂到 `/benchmark/ais_bench/datasets`，其下按数据集组织，例如 `gsm8k/train.jsonl`、`gsm8k/test.jsonl`。两个镜像设置 `AIS_BENCH_DATASETS_CACHE=/benchmark`，使配置中的 `ais_bench/datasets/gsm8k` 指向该挂载。该变量是原生数据集的查找根目录，与 `/tmp/hf/datasets` 中的 Hugging Face 中间缓存不同。数据不打包进镜像，挂载内容需可被运行用户读取。绝对数据路径仍按配置原值使用；自定义配置不采用 `ais_bench/datasets/...` 布局时需填写正确的绝对路径。本地 run-local.sh 将 DATA_DIR 同时挂到固定路径和兼容路径 /data；直接使用已有容器时需自行设置此环境变量。
 
+Docker Hub 发布：独立 workflow `aisbench-dockerhub.yml` 只由手动触发，同时构建 acc/perf 两个 Runner，构建上下文分别为 `runners/aisbench-acc`、`runners/aisbench-perf`，使用其中 `build/Dockerfile`。当前基础镜像为 x86_64，目标固定 `linux/amd64`。使用仓库 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN` 登录，发布 `<username>/argus-runner-aisbench-{acc,perf}:<tag>` 及 `sha-<完整提交 SHA>`；tag 留空时读取各自 runner.yaml 的 version，不更新 latest。先加载镜像，以镜像默认非 root 用户运行入口帮助和现有 real_smoke.py，再推送同一份镜像；测试使用本地模拟服务，不要求 GPU、真实数据集或 UCM，也不代表真实服务验收。两个矩阵任务独立，可能一个成功另一个失败，汇总分别列出镜像和 digest。镜像发布不会自动修改平台注册信息，接入 Docker Hub 时需按版本规则更新 runner.yaml 的 image/version 并重启平台。原有 GHCR release workflow 保持独立。操作步骤见 [Docker Hub 发布说明](../../docs/aisbench-dockerhub.md)。
+
 原生路径参数：num_prompts、num_warmups、temperature、ignore_eos、output_len、concurrency、request_rate。默认低并发，temperature=0.01、ignore_eos=true 对齐 Jenkins；不改变既有 GSM8K 和生成数据路径的缺省值。显式给出的其它模式参数必须拒绝，不能看似接受却不生效。
 
 prefix 仍用现有生成、预热、正式测量流程。增加 `test_cases` 接收旧六列数组 [input_len, output_len, num_requests, hit_rate百分数, concurrency, seed]，转换为私有前缀 rounds；预热输出 max(1, output_len//10)，并发与正式阶段一致，默认 vllm_prompt 指标口径。PD 分离的 POD_INFO 对应 pod_info/metrics_endpoint，逐 endpoint 保留，不自动发现部署形态。
