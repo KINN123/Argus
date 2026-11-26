@@ -1,12 +1,12 @@
 # 用 GitHub Actions 打包 AISBench 镜像
 
-Workflow 文件是 `.github/workflows/aisbench-dockerhub.yml`，在 Actions 页面显示为 **AISBench Docker Hub**。一次运行会分别构建精度、性能两个镜像，使用各自 `runners/aisbench-*/build/Dockerfile`，构建上下文是对应 Runner 目录。
+Workflow 文件是 `.github/workflows/aisbench-dockerhub.yml`，在 Actions 页面显示为 **AISBench Docker Hub**。构建源码固定取远端 **temp** 分支，一次运行会分别构建精度、性能两个镜像，使用各自 `runners/aisbench-*/build/Dockerfile`，构建上下文是对应 Runner 目录。
 
 ## 怎么运行
 
 1. 仓库 Settings → Secrets and variables → Actions → Repository secrets 配好 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`。用户名填写 Docker Hub 用户名，Token 需要有写入对应镜像仓库的权限。
-2. 将 workflow 和两个 Runner 的代码推送到 GitHub，按仓库流程通过 PR 合入默认分支。GitHub 要求 workflow 存在于默认分支，才能手动触发；之后运行时可以选择其它包含这些文件的分支。
-3. 打开 Actions → **AISBench Docker Hub** → **Run workflow**，选择要构建的分支。
+2. 将最新构建代码推送到远端 `temp` 分支。另将 workflow 文件通过 PR 合入默认分支，以便 GitHub 显示手动运行入口；构建源码仍从 `temp` 读取。
+3. 打开 Actions → **AISBench Docker Hub** → **Run workflow**。界面的分支选项决定读取哪一份 workflow，可选择包含本 workflow 的 `temp`；本 workflow 内部固定检出 `temp` 的源码。
 4. `tag` 留空即可使用各自 `runner.yaml` 中的版本，当前都是 `0.3.1`；也可以填写 `0.3.1-test1`。填写的标签原样使用，不会自动去掉 `v`。不允许填写 `latest` 或以 `sha-` 开头的标签。
 5. 等待两个任务都成功，分别打开任务 Summary，复制镜像地址或 digest。
 
@@ -17,7 +17,7 @@ docker.io/yourname/argus-runner-aisbench-acc:0.3.1
 docker.io/yourname/argus-runner-aisbench-perf:0.3.1
 ```
 
-每个镜像另有 `sha-<完整 Git 提交 SHA>` 标签。重复发布同一个标签会覆盖该标签，固定部署推荐使用 Summary 中的 `image@sha256:...`。两个构建任务独立，一个失败时另一个仍可能发布成功；以各自结果为准。
+每次运行先解析一次 `temp` 的提交 SHA，两个镜像都构建这一份源码。每个镜像另有 `sha-<完整源码提交 SHA>` 标签，镜像 revision 和 Summary 也记录这个 SHA。重复发布同一个标签会覆盖该标签，固定部署推荐使用 Summary 中的 `image@sha256:...`。两个构建任务独立，一个失败时另一个仍可能发布成功；以各自结果为准。
 
 也可以使用 GitHub CLI：
 
