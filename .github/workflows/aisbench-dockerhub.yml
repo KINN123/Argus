@@ -58,7 +58,7 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           REQUESTED_TAG: ${{ inputs.tag }}
-          RUNNER_NAME: ${{ matrix.runner }}
+          AISBENCH_RUNNER: ${{ matrix.runner }}
         run: |
           set -euo pipefail
           if [[ -z "$DOCKERHUB_USERNAME" || -z "$DOCKERHUB_TOKEN" ]]; then
@@ -71,13 +71,13 @@ jobs:
           fi
           tag="$REQUESTED_TAG"
           if [[ -z "$tag" ]]; then
-            tag="$(sed -n 's/^version: *//p' "runners/$RUNNER_NAME/runner.yaml" | tr -d '\r')"
+            tag="$(sed -n 's/^version: *//p' "runners/$AISBENCH_RUNNER/runner.yaml" | tr -d '\r')"
           fi
           if [[ ! "$tag" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$ || "$tag" == latest || "$tag" == sha-* ]]; then
             echo '::error::tag 必须为有效 Docker 标签；latest 和 sha- 前缀保留，不能手动指定'
             exit 1
           fi
-          image="docker.io/$DOCKERHUB_USERNAME/argus-runner-$RUNNER_NAME"
+          image="docker.io/$DOCKERHUB_USERNAME/argus-runner-$AISBENCH_RUNNER"
           source_sha="$(git rev-parse HEAD)"
           {
             echo "IMAGE=$image"
