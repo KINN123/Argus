@@ -18,8 +18,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  source:
+    name: Resolve temp source commit
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.revision.outputs.sha }}
+    steps:
+      - name: Checkout temp
+        uses: actions/checkout@v4
+        with:
+          ref: refs/heads/temp
+      - name: Record source commit
+        id: revision
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   publish:
     name: Build and publish ${{ matrix.runner }}
+    needs: source
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     strategy:
@@ -32,6 +49,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source.outputs.sha }}
 
       - name: Prepare image tags
         id: meta
@@ -59,15 +78,17 @@ jobs:
             exit 1
           fi
           image="docker.io/$DOCKERHUB_USERNAME/argus-runner-$RUNNER_NAME"
+          source_sha="$(git rev-parse HEAD)"
           {
             echo "IMAGE=$image"
             echo "IMAGE_TAG=$tag"
-            echo "SHA_TAG=sha-$GITHUB_SHA"
+            echo "SOURCE_SHA=$source_sha"
+            echo "SHA_TAG=sha-$source_sha"
           } >> "$GITHUB_ENV"
           {
             echo 'tags<<TAGS'
             echo "$image:$tag"
-            echo "$image:sha-$GITHUB_SHA"
+            echo "$image:sha-$source_sha"
             echo 'TAGS'
           } >> "$GITHUB_OUTPUT"
 
@@ -93,7 +114,7 @@ jobs:
           sbom: false
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ needs.source.outputs.sha }}
           cache-from: type=gha,scope=dockerhub-${{ matrix.runner }}
           cache-to: type=gha,mode=max,scope=dockerhub-${{ matrix.runner }}
 
@@ -119,6 +140,7 @@ jobs:
             echo
             echo "- Version tag: \`$IMAGE:$IMAGE_TAG\`"
             echo "- Commit tag: \`$IMAGE:$SHA_TAG\`"
+            echo "- Source: \`temp\` at \`$SOURCE_SHA\`"
             echo "- Digest: \`$digest\`"
             echo '- Platform: `linux/amd64`'
             echo '- Entrypoint and AISBench mock-service smoke test passed.'
