@@ -14,6 +14,8 @@ Docker Hub 的构建源码固定来自远端 `temp` 分支。每次 workflow 先
 
 构建矩阵名称使用专用环境变量 `AISBENCH_RUNNER`，不得覆盖 GitHub 内置的 `RUNNER_NAME`（执行机器名称）。读取 runner.yaml 和生成镜像仓库名都使用该专用变量。
 
+0.3.2 镜像用户修复：两个 Dockerfile 创建 aisbench 用户和组（UID/GID 10001），再切换到 `USER 10001:10001`，让 pwd.getpwuid 能解析用户。设置 USER/LOGNAME=aisbench，兼容本地 run-local.sh 覆盖数值 UID 时的 getpass.getuser；TORCH_HOME、TORCHINDUCTOR_CACHE_DIR、TRITON_CACHE_DIR 均放在 /tmp。构建末尾以非 root 用户检查用户记录并导入 AISBench CLI workers，覆盖本次 evaluate → transformers → torch._dynamo 导入失败链；GitHub workflow 继续使用只读根文件系统和可写 /tmp 运行真实 AISBench 模拟服务测试。不增加 run.sh 的版本或源码兼容性门禁。
+
 原生路径参数：num_prompts、num_warmups、temperature、ignore_eos、output_len、concurrency、request_rate。默认低并发，temperature=0.01、ignore_eos=true 对齐 Jenkins；不改变既有 GSM8K 和生成数据路径的缺省值。显式给出的其它模式参数必须拒绝，不能看似接受却不生效。
 
 prefix 仍用现有生成、预热、正式测量流程。增加 `test_cases` 接收旧六列数组 [input_len, output_len, num_requests, hit_rate百分数, concurrency, seed]，转换为私有前缀 rounds；预热输出 max(1, output_len//10)，并发与正式阶段一致，默认 vllm_prompt 指标口径。PD 分离的 POD_INFO 对应 pod_info/metrics_endpoint，逐 endpoint 保留，不自动发现部署形态。
