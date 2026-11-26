@@ -6,11 +6,17 @@ COPY build/requirements.txt /runner/build/requirements.txt
 # Install only at build time; the source archive is pinned in requirements.txt.
 RUN python3 -m pip install --no-cache-dir -r /runner/build/requirements.txt
 COPY . /runner
-RUN chmod 0755 /runner/run.sh /runner/run-local.sh \
- && python3 -c "from testplane_model import Chat" \
+RUN groupadd --gid 10001 aisbench \
+ && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /tmp --shell /usr/sbin/nologin aisbench \
+ && chmod 0755 /runner/run.sh /runner/run-local.sh \
  && mkdir -p /workspace/output /data /models /benchmark/ais_bench/datasets \
  && chown 10001:10001 /workspace/output
 ENV HOME=/tmp \
+    USER=aisbench \
+    LOGNAME=aisbench \
+    TORCH_HOME=/tmp/torch \
+    TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor \
+    TRITON_CACHE_DIR=/tmp/triton \
     AIS_BENCH_DATASETS_CACHE=/benchmark \
     XDG_CACHE_HOME=/tmp/.cache \
     HF_HOME=/tmp/hf \
@@ -23,4 +29,6 @@ ENV HOME=/tmp \
     LANG=C.UTF-8
 USER 10001:10001
 WORKDIR /workspace
+# Exercise CLI imports with the same user as the running container.
+RUN python3 -c "import os, pwd; assert pwd.getpwuid(os.getuid()).pw_name == 'aisbench'; from testplane_model import Chat; from ais_bench.benchmark.cli.workers import WORK_FLOW"
 ENTRYPOINT ["/runner/run.sh"]
