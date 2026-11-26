@@ -13,6 +13,7 @@ exec docker run --rm --init --read-only --user "$(id -u):$(id -g)" \
   --tmpfs /tmp:rw,exec,size=4g --shm-size=1g \
   -v "$OUTPUT_DIR:/workspace/output" \
   -v "$MODEL_DIR:/models/model:ro" -v "$DATA_DIR:/data:ro" \
+  -v "$DATA_DIR:/benchmark/ais_bench/datasets:ro" \
   -e ENDPOINT_API_KEY -e METRICS_API_KEY \
-  "${TESTER_IMAGE:-ghcr.io/ucm-system/argus-runner-aisbench-perf:0.3.0}" \
+  "${TESTER_IMAGE:-ghcr.io/ucm-system/argus-runner-aisbench-perf:0.3.1}" \
   --model_path=/models/model "$@"

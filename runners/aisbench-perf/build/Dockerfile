@@ -8,9 +8,10 @@ RUN python3 -m pip install --no-cache-dir -r /runner/build/requirements.txt
 COPY . /runner
 RUN chmod 0755 /runner/run.sh /runner/run-local.sh \
  && python3 -c "from testplane_model import Chat" \
- && mkdir -p /workspace/output /data /models \
+ && mkdir -p /workspace/output /data /models /benchmark/ais_bench/datasets \
  && chown 10001:10001 /workspace/output
 ENV HOME=/tmp \
+    AIS_BENCH_DATASETS_CACHE=/benchmark \
     XDG_CACHE_HOME=/tmp/.cache \
     HF_HOME=/tmp/hf \
     HF_DATASETS_CACHE=/tmp/hf/datasets \

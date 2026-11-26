@@ -4,7 +4,9 @@
 
 旧 Jenkins 的 acc 并不限于 GSM8K：AISBENCH_DATASETS 是 AISBench 配置名列表。新增 `datasets` 参数，精度走原生 `--mode all --merge-ds --summarizer example`，普通性能走 `--mode perf --summarizer default_perf`。保留各数据集自己的提示词、预处理和 evaluator，不统一换成 GSM8K。实际可用数据集由容器配置、数据文件以及聊天模型支持的推理方式决定，不保证所有 AISBench 数据集都适用。
 
-两种入口互斥：原有 `dataset` 是 Tester 自己处理的 GSM8K/JSONL 路径；新增 `datasets` 是配置名，接受逗号分隔字符串或 JSON 数组。`config_dir` 可指定原有 aisbench_configs 目录；`working_dir` 用于原生调用的相对路径解析，默认调用者当前目录。模型配置从容器的 vllm_api_stream_chat 模板加载，仅在本次输出目录生成覆盖配置，不修改安装文件。没有版本或源码校验。
+两种入口互斥：原有 `dataset` 是 Tester 自己处理的 GSM8K/JSONL 路径；新增 `datasets` 是配置名，接受逗号分隔字符串或 JSON 数组。`config_dir` 可指定原有 aisbench_configs 目录；`working_dir` 设置子进程工作目录，默认调用者当前目录，但不替代 AISBench 的数据根目录。模型配置从容器的 vllm_api_stream_chat 模板加载，仅在本次输出目录生成覆盖配置，不修改安装文件。没有版本或源码校验。
+
+2026-11-26 挂载约定（0.3.1）：平台将数据集根目录挂到 `/benchmark/ais_bench/datasets`，其下按数据集组织，例如 `gsm8k/train.jsonl`、`gsm8k/test.jsonl`。两个镜像设置 `AIS_BENCH_DATASETS_CACHE=/benchmark`，使配置中的 `ais_bench/datasets/gsm8k` 指向该挂载。该变量是原生数据集的查找根目录，与 `/tmp/hf/datasets` 中的 Hugging Face 中间缓存不同。数据不打包进镜像，挂载内容需可被运行用户读取。绝对数据路径仍按配置原值使用；自定义配置不采用 `ais_bench/datasets/...` 布局时需填写正确的绝对路径。本地 run-local.sh 将 DATA_DIR 同时挂到固定路径和兼容路径 /data；直接使用已有容器时需自行设置此环境变量。
 
 原生路径参数：num_prompts、num_warmups、temperature、ignore_eos、output_len、concurrency、request_rate。默认低并发，temperature=0.01、ignore_eos=true 对齐 Jenkins；不改变既有 GSM8K 和生成数据路径的缺省值。显式给出的其它模式参数必须拒绝，不能看似接受却不生效。
 
