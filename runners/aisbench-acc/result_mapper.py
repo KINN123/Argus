@@ -13,6 +13,24 @@ def audit_records(directory, expected):
     return sorted(records, key=lambda r: r["id"])
 
 
+def single_score_detail(detail):
+    if not isinstance(detail, dict):
+        raise Failure("AISBench 逐题评分必须为对象", "upstream_result_invalid", 1)
+    detail = dict(detail)
+    # BaseEvaluator.evaluate groups fields by replica, including n=1.
+    # This tester audits one prediction per sample in each independent round.
+    for key in ("correct", "predictions", "references"):
+        if key not in detail:
+            raise Failure(f"AISBench 逐题评分缺少 {key}", "upstream_result_invalid", 1)
+        if isinstance(detail[key], list):
+            if len(detail[key]) != 1:
+                raise Failure(f"AISBench 逐题评分 {key} 必须只有一次推理结果", "upstream_result_invalid", 1)
+            detail[key] = detail[key][0]
+    if type(detail["correct"]) is not bool or isinstance(detail["predictions"], (list, dict)) or isinstance(detail["references"], (list, dict)):
+        raise Failure("AISBench 逐题评分格式已变化", "upstream_result_invalid", 1)
+    return detail
+
+
 def map_accuracy(directory, rows, labels):
     records = audit_records(directory, len(rows))
     jsonl(directory / "requests.jsonl", records)
@@ -34,9 +52,7 @@ def map_accuracy(directory, rows, labels):
         raise Failure("AISBench 逐题评分缺失或 ID 不一致", "upstream_result_invalid", 1)
     scored = []
     for index, record in enumerate(records):
-        detail = details[str(index)]
-        if type(detail.get("correct")) is not bool or "predictions" not in detail or "references" not in detail:
-            raise Failure("AISBench 逐题评分格式已变化", "upstream_result_invalid", 1)
+        detail = single_score_detail(details[str(index)])
         expected_answer = rows[index]["answer"].split("#### ")[1].replace(",", "")
         if detail.get("origin_prediction") != record["prediction"] or str(detail["references"]) != expected_answer:
             raise Failure("评分与实际回答或参考答案不一致", "upstream_result_invalid", 1)

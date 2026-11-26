@@ -16,6 +16,8 @@ Docker Hub 的构建源码固定来自远端 `temp` 分支。每次 workflow 先
 
 0.3.2 镜像用户修复：两个 Dockerfile 创建 aisbench 用户和组（UID/GID 10001），再切换到 `USER 10001:10001`，让 pwd.getpwuid 能解析用户。设置 USER/LOGNAME=aisbench，兼容本地 run-local.sh 覆盖数值 UID 时的 getpass.getuser；TORCH_HOME、TORCHINDUCTOR_CACHE_DIR、TRITON_CACHE_DIR 均放在 /tmp。构建末尾以非 root 用户检查用户记录并导入 AISBench CLI workers，覆盖本次 evaluate → transformers → torch._dynamo 导入失败链；GitHub workflow 继续使用只读根文件系统和可写 /tmp 运行真实 AISBench 模拟服务测试。不增加 run.sh 的版本或源码兼容性门禁。
 
+0.3.3 精度结果解析修复：AISBench 构建基线中的 BaseEvaluator.evaluate 会按 replica 将 pred/answer/correct 包成列表，OpenICLEvalTask.format_details 将它们写成 predictions/references/correct，即使只有一次推理也得到单元素列表。GSM8K 逐题审计同时接受原来的标量和这三个字段的单元素列表，转换为标量后继续核对布尔评分、样本 ID、实际回答、参考答案和汇总准确率。空列表、多元素列表、非布尔 correct、缺字段仍失败，不按汇总分数猜逐题成绩。原始 AISBench JSON 不修改，sample_scores.jsonl 保持原标量字段格式。回归覆盖 True/False 列表、错误格式、回答错配和汇总不一致。依据为 [本次失败日志](https://github.com/KINN123/Argus/actions/runs/45749610457/job/139673996601) 和构建基线源码的 BaseEvaluator.evaluate、OpenICLEvalTask.format_details。
+
 原生路径参数：num_prompts、num_warmups、temperature、ignore_eos、output_len、concurrency、request_rate。默认低并发，temperature=0.01、ignore_eos=true 对齐 Jenkins；不改变既有 GSM8K 和生成数据路径的缺省值。显式给出的其它模式参数必须拒绝，不能看似接受却不生效。
 
 prefix 仍用现有生成、预热、正式测量流程。增加 `test_cases` 接收旧六列数组 [input_len, output_len, num_requests, hit_rate百分数, concurrency, seed]，转换为私有前缀 rounds；预热输出 max(1, output_len//10)，并发与正式阶段一致，默认 vllm_prompt 指标口径。PD 分离的 POD_INFO 对应 pod_info/metrics_endpoint，逐 endpoint 保留，不自动发现部署形态。

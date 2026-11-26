@@ -54,6 +54,67 @@ class AccuracyTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(metrics[-1]["value"], 0)
 
+    def replica_fixture(self, correct=(True, False)):
+        rows = fixture(self.path, correct)
+        path = next(self.path.glob("aisbench/**/results/*/*.json"))
+        value = json.loads(path.read_text())
+        # Shape produced by BaseEvaluator.evaluate(n=1) + format_details.
+        for detail in value["details"].values():
+            for key in ("correct", "predictions", "references"):
+                detail[key] = [detail[key]]
+        runtime.dump(path, value)
+        return rows, path, value
+
+    def test_single_replica_lists_keep_scores_and_original_evidence(self):
+        rows, path, original = self.replica_fixture()
+        metrics, error = map_accuracy(self.path, rows, {})
+        self.assertIsNone(error)
+        self.assertEqual(metrics[-1]["value"], 50)
+        scored = runtime.read_jsonl(self.path / "sample_scores.jsonl")
+        self.assertEqual([r["correct"] for r in scored], [True, False])
+        self.assertEqual([r["predictions"] for r in scored], ["2", "9"])
+        self.assertEqual(json.loads(path.read_text()), original)
+
+    def test_single_replica_all_wrong_is_valid_zero_score(self):
+        rows, _, _ = self.replica_fixture((False, False))
+        metrics, error = map_accuracy(self.path, rows, {})
+        self.assertIsNone(error)
+        self.assertEqual(metrics[-1]["value"], 0)
+
+    def test_replica_lists_do_not_accept_ambiguous_or_nonboolean_scores(self):
+        rows, path, original = self.replica_fixture()
+        for key, invalid in (("correct", []), ("correct", [True, False]),
+                             ("correct", [1]), ("correct", ["False"]),
+                             ("correct", [[True]]), ("predictions", []),
+                             ("predictions", ["2", "9"]), ("references", []),
+                             ("references", [["2"]])):
+            with self.subTest(key=key, invalid=invalid):
+                value = json.loads(json.dumps(original))
+                value["details"]["0"][key] = invalid
+                runtime.dump(path, value)
+                with self.assertRaises(runtime.Failure):
+                    map_accuracy(self.path, rows, {})
+
+    def test_replica_lists_still_require_auditable_predictions_and_summary(self):
+        rows, path, original = self.replica_fixture()
+        for change in ("reference", "prediction", "summary", "missing", "object"):
+            with self.subTest(change=change):
+                value = json.loads(json.dumps(original))
+                detail = value["details"]["0"]
+                if change == "reference":
+                    detail["references"] = ["42"]
+                elif change == "prediction":
+                    detail["origin_prediction"] = "another answer"
+                elif change == "summary":
+                    value["accuracy"] = 100
+                elif change == "missing":
+                    del detail["correct"]
+                else:
+                    value["details"]["0"] = None
+                runtime.dump(path, value)
+                with self.assertRaises(runtime.Failure):
+                    map_accuracy(self.path, rows, {})
+
     def test_failed_request_is_not_a_wrong_answer(self):
         metrics, error = map_accuracy(self.path, fixture(self.path, success=(True, False)), {})
         self.assertEqual(error.reason, "incomplete_requests")
