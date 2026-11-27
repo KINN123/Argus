@@ -1,4 +1,4 @@
-# AISBench 精度测试（0.3.3）
+# AISBench 精度测试（0.3.4）
 
 对已经运行的模型服务做精度测试。`datasets` 使用容器里的 AISBench 数据集配置和原评分器；`dataset` 保留原有 GSM8K 逐题审计。模型与 UCM 由环境负责。
 
@@ -58,15 +58,17 @@ GSM8K 路径的结果包含 result.json、raw/resolved.json、raw/dataset，以�
 
 ## 构建和验证
 
+genet 分支使用基础镜像 `registry.dev.huawei.com/flash_stor/aisbench_benchmark:v3.1_x86_64_py_310-transformersv5`，沿用其中的 AISBench 和 Transformers，仅在缺少时补装 prometheus-client。宿主机拉好基础镜像后，在本分支的项目根目录执行下面的构建命令。GitHub workflow 仍固定构建 temp，不能用于发布本分支的修改。
+
 ```bash
 docker build -f runners/aisbench-acc/build/Dockerfile \
-  -t ghcr.io/ucm-system/argus-runner-aisbench-acc:0.3.3 runners/aisbench-acc
+  -t ghcr.io/ucm-system/argus-runner-aisbench-acc:0.3.4 runners/aisbench-acc
 python -m unittest discover -s runners/aisbench-acc/tests
 # 在已有 AISBench 环境，用模拟服务检查真实调用链：
 python3 runners/aisbench-acc/tests/real_smoke.py
 ```
 
-run-local.sh 支持 MODEL_DIR、DATA_DIR、OUTPUT_DIR、TESTER_IMAGE。DATA_DIR 同时挂到 /benchmark/ais_bench/datasets 和兼容路径 /data；原生 datasets 模式应指向包含 gsm8k 等子目录的数据集根目录。源码锁只描述构建基线，不在运行前校验。离线测试不能替代真实模型/UCM 验收。比较 UCM 开关前后精度时，应保持模型、题目和生成参数相同。
+run-local.sh 支持 MODEL_DIR、DATA_DIR、OUTPUT_DIR、TESTER_IMAGE。DATA_DIR 同时挂到 /benchmark/ais_bench/datasets 和兼容路径 /data；原生 datasets 模式应指向包含 gsm8k 等子目录的数据集根目录。源码锁仅作历史参考，不描述当前基础镜像，也不在运行前校验。离线测试不能替代真实模型/UCM 验收。比较 UCM 开关前后精度时，应保持模型、题目和生成参数相同。
 
 `dataset` 与 `datasets` 互斥；原生路径使用 num_prompts，GSM8K 路径使用 max_samples，不能混传。extra_info 仅用于原生路径，可填 JSON 字符串或普通文字。平台重启 argusd 后扫描注册新版本；使用平台前需构建和发布 runner.yaml 指向的镜像。
 

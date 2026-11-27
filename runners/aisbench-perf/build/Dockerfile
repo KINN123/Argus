@@ -1,10 +1,11 @@
 # Build context: runners/aisbench-perf
-FROM ghcr.io/aisbench/aisbench_benchmark:v3.1-20260330-master_x86_64_py_310
+FROM registry.dev.huawei.com/flash_stor/aisbench_benchmark:v3.1_x86_64_py_310-transformersv5
 USER root
 WORKDIR /runner
 COPY build/requirements.txt /runner/build/requirements.txt
-# Install only at build time; the source archive is pinned in requirements.txt.
-RUN python3 -m pip install --no-cache-dir -r /runner/build/requirements.txt
+# Preserve the base AISBench/Transformers environment; only fill the metrics dependency.
+RUN python3 -c "import prometheus_client" \
+ || python3 -m pip install --no-cache-dir --no-deps -r /runner/build/requirements.txt
 COPY . /runner
 RUN groupadd --gid 10001 aisbench \
  && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /tmp --shell /usr/sbin/nologin aisbench \

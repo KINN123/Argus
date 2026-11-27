@@ -20,6 +20,8 @@ Docker Hub 的构建源码固定来自远端 `temp` 分支。每次 workflow 先
 
 原生路径参数：num_prompts、num_warmups、temperature、ignore_eos、output_len、concurrency、request_rate。默认低并发，temperature=0.01、ignore_eos=true 对齐 Jenkins；不改变既有 GSM8K 和生成数据路径的缺省值。显式给出的其它模式参数必须拒绝，不能看似接受却不生效。
 
+0.3.4（genet 本地构建）：两个 Dockerfile 使用用户提供的 `registry.dev.huawei.com/flash_stor/aisbench_benchmark:v3.1_x86_64_py_310-transformersv5`，保留基础镜像中的 AISBench、Transformers、datasets、numpy、MMEngine。requirements.txt 只列补充依赖 prometheus-client==0.21.1；已有 prometheus_client 可导入时不执行 pip，缺少时用 --no-deps 安装，避免改写基础环境。旧 aisbench-lock.json 仅保留为历史源码参考，不再代表当前镜像内容。非 root 用户、可写缓存、数据集挂载约定及构建导入检查保持有效。宿主机从 genet 源码直接 docker build，构建上下文分别是两个 Runner 目录；已有 GitHub workflow 仍固定从 temp 取源码，不用于构建本分支。
+
 prefix 仍用现有生成、预热、正式测量流程。增加 `test_cases` 接收旧六列数组 [input_len, output_len, num_requests, hit_rate百分数, concurrency, seed]，转换为私有前缀 rounds；预热输出 max(1, output_len//10)，并发与正式阶段一致，默认 vllm_prompt 指标口径。PD 分离的 POD_INFO 对应 pod_info/metrics_endpoint，逐 endpoint 保留，不自动发现部署形态。
 
 输出：平台 result.json；原始日志、CSV、预测文件保持在本次 raw/native/aisbench 下；额外 accuracy.csv（原始汇总列）、performance_flat.csv（旧 label_statistic 表头）、legacy_results.json（build/type/status/data/extra_info，build 使用平台 task_id）。多份性能表逐份保存并加 source 防止覆盖。数值保留符号和科学计数法，缺失不填 0。退出非零、无有效汇总或汇总缺成绩均失败，仍留原文件。原生路径依赖 AISBench 自身的请求和评分判定，明确记录验证范围，不声称具备旧 GSM8K 逐题审计。

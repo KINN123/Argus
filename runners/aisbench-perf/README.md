@@ -1,4 +1,4 @@
-# AISBench 性能和前缀缓存测试（0.3.3）
+# AISBench 性能和前缀缓存测试（0.3.4）
 
 对已经运行的模型服务准备数据、预热、压测，再汇总性能和缓存命中率。实现从用户提供的 reference 两套脚本迁移而来。模型服务、UCM 和清缓存由环境负责。
 
@@ -128,12 +128,12 @@ rounds 各组放 groups/N，根目录汇总表格；平台多行参数放 cases/
 
 ```bash
 docker build -f runners/aisbench-perf/build/Dockerfile \
-  -t ghcr.io/ucm-system/argus-runner-aisbench-perf:0.3.3 runners/aisbench-perf
+  -t ghcr.io/ucm-system/argus-runner-aisbench-perf:0.3.4 runners/aisbench-perf
 python -m unittest discover -s runners/aisbench-perf/tests
 # 在已有 AISBench 环境里，用模拟服务验证真实调用链：
 python3 runners/aisbench-perf/tests/real_smoke.py
 ```
 
-构建基线固定依赖，但用户现有镜像不必安装它们才能运行。镜像尚需构建和发布。离线验证使用模拟 tokenizer/请求，不能代替真实 AISBench 3.1 和 UCM 验收。
+genet 分支使用基础镜像 `registry.dev.huawei.com/flash_stor/aisbench_benchmark:v3.1_x86_64_py_310-transformersv5`，沿用其中的 AISBench 和 Transformers，仅在缺少时补装 prometheus-client。源码锁仅作历史参考，不描述当前基础镜像。宿主机拉好基础镜像后，在本分支的项目根目录执行上面的构建命令；GitHub workflow 仍固定构建 temp。离线验证使用模拟 tokenizer/请求，不能代替真实 AISBench 和 UCM 验收。
 
 设计见 [Jenkins 迁移说明](../../design/impl/aisbench-jenkins-migration.md) 和 [已有迁移说明](../../design/impl/aisbench-reference-migration.md)，源文件校验值见 [reference-sources.json](reference-sources.json)。
